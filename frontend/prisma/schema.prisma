@@ -1,67 +1,115 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
-model Escuela {
-  id          Int           @id @default(autoincrement())
-  nombre      String
-  direccion   String?
-  cuit        String         @unique
-  liquidaciones Liquidacion[]
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DocumentoPDF {
+  id             Int           @id @default(autoincrement())
+  filename       String        @unique
+  tipo           String        // LISTADO, TRANSFERENCIA, etc.
+  procesado      Boolean       @default(false)
+  fechaProcesado DateTime?
+  metadata       Json?         // Datos adicionales
+  transferencia  Transferencia? @relation("DocumentoTransferencia")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([tipo])
+  @@index([procesado])
 }
 
 model Persona {
-  id        Int           @id @default(autoincrement())
-  nombre    String
-  apellido  String
-  legajos   Int?
-  liquidaciones LiquidacionPersona[]
-}
-
-model Concepto {
-  id        Int           @id @default(autoincrement())
-  descripcion String
-  porcentaje Float?
-  liquidaciones Liquidacion[]
+  id             Int                  @id @default(autoincrement())
+  nombre         String
+  apellido       String
+  documento      String?              @unique
+  email          String?
+  telefono       String?
+  liquidaciones  LiquidacionPersona[]
+  conceptos      LiquidacionConcepto[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  
+  @@unique([nombre, apellido], name: "nombre_apellido")
+  @@index([documento])
 }
 
 model Liquidacion {
-  id             Int           @id @default(autoincrement())
-  fecha          DateTime
-  escuelaId      Int
-  conceptoId     Int
-  totalPersonas  Int
-  totalMonto     Float
-  totalRemunerativo Float
-  escuela        Escuela       @relation(fields: [escuelaId], references: [id])
-  concepto       Concepto      @relation(fields: [conceptoId], references: [id])
+  id             Int                  @id @default(autoincrement())
+  tipo           String               // SIDEPP, Transferencia, etc.
+  periodo        String
+  fecha          DateTime             @default(now())
   personas       LiquidacionPersona[]
+  conceptos      LiquidacionConcepto[]
+  createdAt      DateTime             @default(now())
+  
+  @@index([tipo])
+  @@index([periodo])
 }
 
 model LiquidacionPersona {
-  id            Int        @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
+  persona       Persona      @relation(fields: [personaId], references: [id])
   personaId     Int
+  liquidacion   Liquidacion  @relation(fields: [liquidacionId], references: [id])
   liquidacionId Int
-  monto         Float
-  persona       Persona    @relation(fields: [personaId], references: [id])
+  monto         Decimal
+  detalles      Json?        // Datos adicionales
+  createdAt     DateTime     @default(now())
+
+  @@unique([personaId, liquidacionId])
+}
+
+model Concepto {
+  id             Int                  @id @default(autoincrement())
+  codigo         String               @unique
+  descripcion    String
+  tipo           String               // HABER, DESCUENTO, etc.
+  liquidaciones  LiquidacionConcepto[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model LiquidacionConcepto {
+  id            Int         @id @default(autoincrement())
   liquidacion   Liquidacion @relation(fields: [liquidacionId], references: [id])
+  liquidacionId Int
+  concepto      Concepto    @relation(fields: [conceptoId], references: [id])
+  conceptoId    Int
+  monto         Decimal
+  cantidad      Decimal?    @default(1)
+  importe       Decimal
+  detalles      Json?       // Datos adicionales
+  personaId     Int?        // Opcional: si el concepto es específico de una persona
+  persona       Persona?    @relation(fields: [personaId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@unique([liquidacionId, conceptoId, personaId])
 }
 
 model Transferencia {
-  id             Int        @id @default(autoincrement())
-  fechaHora      DateTime
-  bancoOrigen    String
-  bancoDestino   String
-  titularDestino String
-  cuitOrigen     String
-  cuitDestino    String
-  cbuDestino     String
-  cuentaOrigen   String
-  importe        Float
-  nroOperacion   String
+  id              Int          @id @default(autoincrement())
+  documento       DocumentoPDF @relation("DocumentoTransferencia", fields: [documentoId], references: [id])
+  documentoId     Int          @unique
+  fechaOperacion  DateTime
+  montoTotal      Decimal
+  cantidadPersonas Int
+  bancoOrigen     String?
+  cuentaOrigen    String?
+  cbuOrigen       String?
+  bancoDestino    String?
+  cuentaDestino   String?
+  cbuDestino      String?
+  referencia      String?
+  estado          String       @default("PENDIENTE") // PENDIENTE, PROCESADO, ERROR
+  detalles        Json?        // Datos adicionales
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 }
