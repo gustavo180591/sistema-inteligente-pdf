@@ -1,15 +1,36 @@
 // src/lib/pdf/processors/ListadoSIDEPPProcessor.js
-import { prisma } from '../../db/prisma-client.js';
+import { PDFProcessor } from './base';
+import { ValidationError } from './errors';
 
-export class ListadoSIDEPPProcessor {
-  async process(text, filePath, docId) {
+export class ListadoSIDEPPProcessor extends PDFProcessor {
+  constructor() {
+    super();
+    this.type = 'SIDEPP';
+    this.requiredFields = [
+      'Sistema Integrado de Emisión de Planillas de Pago',
+      'Liquidación de Haberes',
+      'CUIT',
+      'Período'
+    ];
+  }
+  async process(text, filePath, docId = null) {
+    // Validar estructura del documento
+    if (!await this.validateDocumentStructure(text)) {
+      throw new ValidationError('El documento no tiene el formato SIDEPP esperado');
+    }
+
     const lineas = text.split('\n').map(l => l.trim()).filter(Boolean);
-    const periodo = this.extraerPeriodo(text);
-    const personas = this.extraerPersonas(lineas);
-    const conceptos = this.extraerConceptos(lineas);
     
-    // Usar transacción para asegurar consistencia
-    return await prisma.$transaction(async (tx) => {
+    try {
+      // Extraer datos estructurados
+      const periodo = this.extraerPeriodo(text);
+      const { personas, conceptos } = await this.extraerDatosEstructurados(text, lineas);
+      
+      // Validar datos extraídos
+      this.validarDatosExtraidos({ periodo, personas, conceptos });
+      
+      // Usar transacción para asegurar consistencia
+      return await prisma.$transaction(async (tx) => {
       // 1. Crear o actualizar personas
       const personasGuardadas = await Promise.all(
         personas.map(async (p) => {
@@ -77,12 +98,52 @@ export class ListadoSIDEPPProcessor {
         );
       }
 
-      return { 
-        personas: personasGuardadas.length,
-        liquidacionId: liquidacion.id,
-        personaId: personasGuardadas[0]?.id // Devolver ID de la primera persona
+      return {
+        periodo,
+        totalPersonas: personasGuardadas.length,
+        totalConceptos: conceptos.length,
+        detalles: {
+          personas: personasGuardadas,
+          conceptos: conceptos
+        }
       };
     });
+  } catch (error) {
+    console.error('Error al procesar documento SIDEPP:', error);
+    throw new ProcessingError(
+      'Error al procesar el documento SIDEPP',
+      'SIDEPP_PROCESSING_ERROR'
+    );
+  }
+
+  /**
+   * Extrae datos estructurados del texto del PDF
+   * @private
+   */
+  async extraerDatosEstructurados(text, lineas) {
+    const periodo = this.extraerPeriodo(text);
+    const personas = this.extraerPersonas(lineas);
+    const conceptos = this.extraerConceptos(lineas);
+    
+    return { periodo, personas, conceptos };
+  }
+
+  /**
+   * Valida los datos extraídos del documento
+   * @private
+   */
+  validarDatosExtraidos({ periodo, personas, conceptos }) {
+    if (!periodo || !periodo.desde || !periodo.hasta) {
+      throw new ValidationError('No se pudo determinar el período del documento', 'periodo');
+    }
+
+    if (!personas || personas.length === 0) {
+      throw new ValidationError('No se encontraron personas en el documento', 'personas');
+    }
+
+    if (!conceptos || conceptos.length === 0) {
+      console.warn('No se encontraron conceptos en el documento');
+    }
   }
 
   extraerPeriodo(texto) {
