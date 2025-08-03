@@ -1,6 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,106 +8,67 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model DocumentoPDF {
-  id             Int           @id @default(autoincrement())
-  filename       String        @unique
-  tipo           String        // LISTADO, TRANSFERENCIA, etc.
-  procesado      Boolean       @default(false)
-  fechaProcesado DateTime?
-  metadata       Json?         // Datos adicionales
-  transferencia  Transferencia? @relation("DocumentoTransferencia")
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  @@index([tipo])
-  @@index([procesado])
-}
-
-model Persona {
-  id             Int                  @id @default(autoincrement())
-  nombre         String
-  apellido       String
-  documento      String?              @unique
-  email          String?
-  telefono       String?
-  liquidaciones  LiquidacionPersona[]
-  conceptos      LiquidacionConcepto[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  
-  @@unique([nombre, apellido], name: "nombre_apellido")
-  @@index([documento])
-}
-
-model Liquidacion {
-  id             Int                  @id @default(autoincrement())
-  tipo           String               // SIDEPP, Transferencia, etc.
-  periodo        String
-  fecha          DateTime             @default(now())
-  personas       LiquidacionPersona[]
-  conceptos      LiquidacionConcepto[]
-  createdAt      DateTime             @default(now())
-  
-  @@index([tipo])
-  @@index([periodo])
-}
-
-model LiquidacionPersona {
-  id            Int          @id @default(autoincrement())
-  persona       Persona      @relation(fields: [personaId], references: [id])
-  personaId     Int
-  liquidacion   Liquidacion  @relation(fields: [liquidacionId], references: [id])
-  liquidacionId Int
-  monto         Decimal
-  detalles      Json?        // Datos adicionales
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String?
+  password      String
   createdAt     DateTime     @default(now())
-
-  @@unique([personaId, liquidacionId])
+  updatedAt     DateTime     @updatedAt
+  documentos    DocumentoPDF[]
 }
 
-model Concepto {
-  id             Int                  @id @default(autoincrement())
-  codigo         String               @unique
-  descripcion    String
-  tipo           String               // HABER, DESCUENTO, etc.
-  liquidaciones  LiquidacionConcepto[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-}
+model DocumentoPDF {
+  id            String       @id @default(cuid())
+  nombreArchivo String
+  tipo          String       // TRANSFERENCIA, SIDEPP, etc.
+  estado        String       // PROCESADO, PENDIENTE, ERROR
+  fechaCarga    DateTime     @default(now())
+  url           String?
+  metadata      Json?
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  transferencia Transferencia?
+  sidepp        SIDEPP?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
-model LiquidacionConcepto {
-  id            Int         @id @default(autoincrement())
-  liquidacion   Liquidacion @relation(fields: [liquidacionId], references: [id])
-  liquidacionId Int
-  concepto      Concepto    @relation(fields: [conceptoId], references: [id])
-  conceptoId    Int
-  monto         Decimal
-  cantidad      Decimal?    @default(1)
-  importe       Decimal
-  detalles      Json?       // Datos adicionales
-  personaId     Int?        // Opcional: si el concepto es específico de una persona
-  persona       Persona?    @relation(fields: [personaId], references: [id])
-  createdAt     DateTime    @default(now())
-
-  @@unique([liquidacionId, conceptoId, personaId])
+  @@index([userId])
 }
 
 model Transferencia {
-  id              Int          @id @default(autoincrement())
-  documento       DocumentoPDF @relation("DocumentoTransferencia", fields: [documentoId], references: [id])
-  documentoId     Int          @unique
-  fechaOperacion  DateTime
-  montoTotal      Decimal
-  cantidadPersonas Int
-  bancoOrigen     String?
-  cuentaOrigen    String?
-  cbuOrigen       String?
-  bancoDestino    String?
-  cuentaDestino   String?
-  cbuDestino      String?
-  referencia      String?
-  estado          String       @default("PENDIENTE") // PENDIENTE, PROCESADO, ERROR
-  detalles        Json?        // Datos adicionales
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String      @id @default(cuid())
+  documento      DocumentoPDF @relation(fields: [documentoId], references: [id])
+  documentoId    String      @unique
+  fechaOperacion DateTime
+  montoTotal     Decimal
+  cbuOrigen      String
+  cbuDestino     String
+  referencia     String?
+  detalles       Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model SIDEPP {
+  id             String      @id @default(cuid())
+  documento      DocumentoPDF @relation(fields: [documentoId], references: [id])
+  documentoId    String      @unique
+  periodo        String
+  total          Decimal
+  detalles       Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Persona {
+  id        String   @id @default(cuid())
+  nombre    String
+  apellido  String
+  documento String?  @unique
+  legajos   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([apellido, nombre])
 }

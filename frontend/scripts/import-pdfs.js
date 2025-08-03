@@ -58,12 +58,18 @@ async function processPDF(filePath) {
     for (let i = 0; i < lineas.length; i++) {
       const linea = lineas[i];
       
-      // Buscar el inicio de la sección de personas
-      if (linea.includes('Personas') && lineas[i+1]?.includes('Tot Remunerativo')) {
-        enSeccionPersonas = true;
-        i += 1; // Saltar la línea de encabezado
-        continue;
-      }
+             // Buscar el inicio de la sección de personas
+       if (linea.includes('Personas') && lineas[i+1]?.includes('Tot Remunerativo')) {
+         enSeccionPersonas = true;
+         i += 1; // Saltar la línea de encabezado
+         continue;
+       }
+       
+       // Para listado1.pdf, buscar el patrón específico
+       if (linea.includes('Personas') && linea.includes('Tot Remunerativo')) {
+         enSeccionPersonas = true;
+         continue;
+       }
       
       // Si estamos en la sección de personas
       if (enSeccionPersonas) {
@@ -109,19 +115,27 @@ async function processPDF(filePath) {
           'familia', 'agrícola', 'aristóbulo', 'valle', 'page', 'of']
       ]);
       
-      // Buscar líneas que parezcan nombres completos
-      for (const linea of lineas) {
-        // Filtrar líneas que son muy cortas o muy largas para ser nombres
-        if (linea.length < 5 || linea.length > 100) continue;
-        
-        // Buscar patrones que parezcan nombres (formato: Apellido Nombre)
-        // Primero intentar con formato en mayúsculas (para listado1.pdf)
-        let posiblesNombres = linea.match(/\b[A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){1,2}\b/g) || [];
-        
-        // Si no hay coincidencias en mayúsculas, intentar con formato normal
-        if (posiblesNombres.length === 0) {
-          posiblesNombres = linea.match(/\b[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:\s+[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)+\b/g) || [];
-        }
+             // Buscar líneas que parezcan nombres completos
+       for (const linea of lineas) {
+         // Filtrar líneas que son muy cortas o muy largas para ser nombres
+         if (linea.length < 5 || linea.length > 100) continue;
+         
+         // Buscar patrones que parezcan nombres (formato: Apellido Nombre)
+         // Primero intentar con formato en mayúsculas (para listado1.pdf)
+         let posiblesNombres = linea.match(/\b[A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){1,2}\b/g) || [];
+         
+         // Si no hay coincidencias en mayúsculas, intentar con formato normal
+         if (posiblesNombres.length === 0) {
+           posiblesNombres = linea.match(/\b[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:\s+[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+)+\b/g) || [];
+         }
+         
+         // Para listado1.pdf, buscar el patrón específico: NOMBRE APELLIDO seguido de números
+         if (posiblesNombres.length === 0) {
+           const match = linea.match(/^([A-ZÁÉÍÓÚÜÑ]+(?:\s+[A-ZÁÉÍÓÚÜÑ]+)+)(?=\s+\d|\.\d)/);
+           if (match) {
+             posiblesNombres = [match[1]];
+           }
+         }
         
         for (const nombre of posiblesNombres) {
           const palabras = nombre.split(/\s+/);
