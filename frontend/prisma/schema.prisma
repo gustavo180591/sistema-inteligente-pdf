@@ -1,0 +1,67 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Escuela {
+  id          Int           @id @default(autoincrement())
+  nombre      String
+  direccion   String?
+  cuit        String         @unique
+  liquidaciones Liquidacion[]
+}
+
+model Persona {
+  id        Int           @id @default(autoincrement())
+  nombre    String
+  apellido  String
+  legajos   Int?
+  liquidaciones LiquidacionPersona[]
+}
+
+model Concepto {
+  id        Int           @id @default(autoincrement())
+  descripcion String
+  porcentaje Float?
+  liquidaciones Liquidacion[]
+}
+
+model Liquidacion {
+  id             Int           @id @default(autoincrement())
+  fecha          DateTime
+  escuelaId      Int
+  conceptoId     Int
+  totalPersonas  Int
+  totalMonto     Float
+  totalRemunerativo Float
+  escuela        Escuela       @relation(fields: [escuelaId], references: [id])
+  concepto       Concepto      @relation(fields: [conceptoId], references: [id])
+  personas       LiquidacionPersona[]
+}
+
+model LiquidacionPersona {
+  id            Int        @id @default(autoincrement())
+  personaId     Int
+  liquidacionId Int
+  monto         Float
+  persona       Persona    @relation(fields: [personaId], references: [id])
+  liquidacion   Liquidacion @relation(fields: [liquidacionId], references: [id])
+}
+
+model Transferencia {
+  id             Int        @id @default(autoincrement())
+  fechaHora      DateTime
+  bancoOrigen    String
+  bancoDestino   String
+  titularDestino String
+  cuitOrigen     String
+  cuitDestino    String
+  cbuDestino     String
+  cuentaOrigen   String
+  importe        Float
+  nroOperacion   String
+}
