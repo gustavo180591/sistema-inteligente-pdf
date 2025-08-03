@@ -29,54 +29,92 @@ Sistema para el procesamiento automático de archivos PDF de SIDEPP y transferen
 - **Backend**: Node.js
 - **Base de Datos**: PostgreSQL 15
 - **ORM**: Prisma
-- **Contenedorización**: Docker + Docker Compose
-- **Herramientas Adicionales**:
-  - pgAdmin para gestión de base de datos
-  - pdf-parse para extracción de texto
-  - Tailwind CSS para estilos
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🚀 Comenzando
+## 🚀 Estado Actual del Proyecto (Actualizado: Agosto 2024)
 
-### Requisitos Previos
+### ✅ Características Implementadas
 
-- Docker y Docker Compose
-- Node.js 18+ (solo para desarrollo)
-- pnpm (recomendado)
+#### Frontend (SvelteKit)
+- **Dashboard Principal**
+  - Estadísticas generales (StatsOverview)
+  - Gráficos analíticos (AnalyticsCharts)
+  - Filtros de documentos (DocumentFilters)
+  - Listado de documentos recientes (RecentDocuments)
+- **Sistema de Carga**
+  - Componente de drag & drop
+  - Validación de archivos
+  - Visualización de progreso
 
-### Instalación
+#### Backend (Node.js)
+- **API de Documentos**
+  - Endpoint de subida de archivos
+  - Procesamiento de PDFs
+  - Extracción de metadatos
+- **Base de Datos (PostgreSQL)**
+  - Modelos principales implementados
+  - Migraciones con Prisma
+  - Relaciones entre entidades
 
-1. **Clonar el repositorio**
-   ```bash
-   git clone https://github.com/tu-usuario/sistema-inteligente-pdf.git
-   cd sistema-inteligente-pdf
-   ```
+#### Procesamiento de PDFs
+- Soporte para múltiples formatos
+- Extracción de texto
+- Identificación de tipos de documentos
+- Manejo de errores básico
 
-2. **Configuración del entorno**
-   ```bash
-   cp .env.example .env
-   # Editar las variables según sea necesario
-   ```
+### 📦 Dependencias Principales
+- **Frontend**: 
+  - SvelteKit
+  - Tailwind CSS
+  - Chart.js
+- **Backend**:
+  - Express
+  - Prisma ORM
+  - pdf-parse
+- **Base de Datos**:
+  - PostgreSQL
+  - pgAdmin (para gestión)
 
-3. **Iniciar los servicios con Docker**
-   ```bash
-   docker-compose up -d
-   ```
+### 🚧 Próximos Pasos
+- [ ] Sistema de autenticación
+- [ ] Mejoras en la interfaz de usuario
+- [ ] Más tipos de análisis de documentos
+- [ ] Exportación de datos
+- [ ] Tests automatizados
 
-4. **Instalar dependencias del frontend**
-   ```bash
-   cd frontend
-   pnpm install
-   ```
+## 🛠️ Instalación
 
-5. **Aplicar migraciones de la base de datos**
-   ```bash
-   pnpm prisma migrate dev
-   ```
+```bash
+# Clonar repositorio
+git clone https://github.com/tu-usuario/sistema-inteligente-pdf.git
+cd sistema-inteligente-pdf/frontend
 
-6. **Iniciar el servidor de desarrollo**
-   ```bash
-   pnpm run dev
-   ```
+# Instalar dependencias
+npm install
+
+# Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tus credenciales
+
+# Iniciar servidor de desarrollo
+npm run dev
+```
+
+## 🐳 Docker (Recomendado)
+
+```bash
+# Desde la raíz del proyecto
+docker-compose up -d
+```
+
+## 📝 Licencia
+Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
+
+## 🤝 Contribución
+Las contribuciones son bienvenidas. Por favor, lee nuestras [guías de contribución](CONTRIBUTING.md) para más detalles.
+
+## 📞 Soporte
+Para soporte, por favor abre un issue en el repositorio.
 
 La aplicación estará disponible en [http://localhost:3000](http://localhost:3000)
 

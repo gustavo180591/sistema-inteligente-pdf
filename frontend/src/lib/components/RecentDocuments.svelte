@@ -15,6 +15,8 @@
   let isLoading = true;
 
   async function loadDocuments() {
+    if (typeof window === 'undefined') return; // Solo ejecutar en el cliente
+    
     isLoading = true;
     const params = new URLSearchParams();
     if (filters.search) params.append('search', filters.search);
@@ -22,18 +24,28 @@
     if (filters.startDate) params.append('startDate', filters.startDate);
     if (filters.endDate) params.append('endDate', filters.endDate);
 
-    const response = await fetch(`/api/documents?${params}`);
-    documents = await response.json();
-    isLoading = false;
+    try {
+      const response = await fetch(`/api/documents?${params}`);
+      documents = await response.json();
+    } catch (error) {
+      console.error('Error loading documents:', error);
+      documents = [];
+    } finally {
+      isLoading = false;
+    }
   }
 
   function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString('es-AR');
   }
 
-  onMount(loadDocuments);
+  onMount(() => {
+    loadDocuments();
+  });
 
-  $: if (filters) loadDocuments();
+  $: if (filters && typeof window !== 'undefined') {
+    loadDocuments();
+  }
 </script>
 
 <div class="overflow-x-auto">
