@@ -37,17 +37,72 @@ sistema-inteligente-pdf/
 
 ### 🔍 Procesamiento de PDFs
 - Identificación automática de tipos (SIDEPP/TRANSFERENCIA)
-- Extracción estructurada de datos
-- Validación de documentos
-- Soporte para múltiples formatos
+- Extracción estructurada de datos con soporte para múltiples formatos
+- Validación de documentos con verificación de CVU/CBU
+- Plantillas configurables para diferentes formatos de escuelas
+- Procesamiento mediante:
+  - PDF.js para extracción directa de texto
+  - Tesseract.js para OCR cuando sea necesario
+  - Validación de comprobantes bancarios
+- Configuración manual de columnas y formatos
 
 ### 🗄️ Base de Datos
 - Modelos principales:
   - DocumentoPDF
   - Transferencia
   - Persona
+  - PlantillaDocumento
+  - ConfiguracionEscuela
 - Migraciones con Prisma
 - PostgreSQL como motor principal
+
+### 🛠️ Configuración de Plantillas
+
+Las plantillas permiten definir la estructura de diferentes formatos de documentos. Cada plantilla incluye:
+
+```javascript
+{
+  schoolId: 'school-123',
+  templateName: 'Formato Escuela X',
+  periodFormat: 'MM/YYYY',
+  columns: {
+    id: { header: 'Legajo', type: 'number', required: true },
+    name: { header: 'Nombre', type: 'string', required: true },
+    amount: { header: 'Monto', type: 'currency', required: true }
+  },
+  receipt: {
+    required: true,
+    fields: {
+      date: { pattern: /Fecha:\s*(\d{2}\/\d{2}\/\d{4})/ },
+      amount: { pattern: /Monto:\s*\$?([\d.,]+)/ },
+      destinationCVU: { 
+        value: '1234567890123456789012',
+        pattern: /CBU Destino:\s*([\d]+)/
+      }
+    }
+  }
+}
+```
+
+### 🔄 Flujo de Procesamiento
+
+1. **Carga de Documento**
+   - Subida de archivo PDF
+   - Opción para adjuntar comprobante bancario
+
+2. **Selección de Plantilla**
+   - Detección automática del formato
+   - Selección manual si no se reconoce
+
+3. **Validación**
+   - Verificación de datos requeridos
+   - Validación de montos y fechas
+   - Verificación de CVU/CBU de destino
+
+4. **Confirmación**
+   - Vista previa de datos extraídos
+   - Opción de corrección manual
+   - Confirmación y guardado
 
 ## 🛠️ Configuración Rápida
 
@@ -84,10 +139,31 @@ sistema-inteligente-pdf/
 
 ## 🚧 Próximas Mejoras
 - [ ] Implementar autenticación de usuarios
-- [ ] Mejorar el sistema de procesamiento de PDFs
+- [ ] Interfaz de configuración de plantillas
+- [ ] Integración con ChatGPT para análisis de documentos
+- [ ] Mejorar el sistema de OCR con Tesseract.js
 - [ ] Agregar más tipos de documentos
 - [ ] Implementar exportación de informes
 - [ ] Añadir tests automatizados
+
+## 🤖 Procesamiento Inteligente
+
+El sistema utiliza diferentes estrategias según el tipo de documento:
+
+1. **Documentos Estructurados**
+   - Extracción directa de texto con PDF.js
+   - Mapeo de columnas según plantilla
+   - Validación de formatos
+
+2. **Documentos No Estructurados**
+   - Procesamiento OCR con Tesseract.js
+   - Análisis de patrones
+   - Validación cruzada con plantillas
+
+3. **Comprobantes Bancarios**
+   - Verificación de montos
+   - Validación de fechas
+   - Comprobación de CVU/CBU de destino
 
 ## 🤝 Cómo Contribuir
 1. Haz un fork del proyecto
