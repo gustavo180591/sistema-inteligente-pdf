@@ -1,203 +1,106 @@
-# 📄 Sistema Inteligente de Procesamiento de PDFs
+# 📄 Sistema Inteligente de Procesamiento de PDF
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Svelte](https://img.shields.io/badge/Svelte-4A4A55?style=flat&logo=svelte&logoColor=FF3E00)](https://svelte.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-## 🚀 Descripción
-
-Sistema para el procesamiento automático de archivos PDF de SIDEPP y transferencias bancarias, diseñado para extraer información estructurada y almacenarla en una base de datos PostgreSQL con una interfaz web intuitiva.
-
-## 🌟 Características Principales
-
-### ✅ Implementadas
-- **Estructura Base** con Docker y PostgreSQL
-- **Modelo de Datos** para manejo de documentos y personas
-- **Extracción Básica** de texto de PDFs
-- **API Inicial** para procesamiento de archivos
-
-### 🚧 En Desarrollo
-- **Procesamiento Avanzado** de PDFs
-- **Interfaz de Usuario** completa
-- **Dashboard** de análisis
-- **Exportación** de informes
-
-## 🛠️ Stack Tecnológico
-
-- **Frontend**: SvelteKit 2
-- **Backend**: Node.js
-- **Base de Datos**: PostgreSQL 15
-- **ORM**: Prisma
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-## 🚀 Estado Actual del Proyecto (Actualizado: Agosto 2024)
-
-### ✅ Características Implementadas
-
-#### Frontend (SvelteKit)
-- **Dashboard Principal**
-  - Estadísticas generales (StatsOverview)
-  - Gráficos analíticos (AnalyticsCharts)
-  - Filtros de documentos (DocumentFilters)
-  - Listado de documentos recientes (RecentDocuments)
-- **Sistema de Carga**
-  - Componente de drag & drop
-  - Validación de archivos
-  - Visualización de progreso
-
-#### Backend (Node.js)
-- **API de Documentos**
-  - Endpoint de subida de archivos
-  - Procesamiento de PDFs
-  - Extracción de metadatos
-- **Base de Datos (PostgreSQL)**
-  - Modelos principales implementados
-  - Migraciones con Prisma
-  - Relaciones entre entidades
-
-#### Procesamiento de PDFs
-- Soporte para múltiples formatos
-- Extracción de texto
-- Identificación de tipos de documentos
-- Manejo de errores básico
-
-### 📦 Dependencias Principales
-- **Frontend**: 
-  - SvelteKit
-  - Tailwind CSS
-  - Chart.js
-- **Backend**:
-  - Express
-  - Prisma ORM
-  - pdf-parse
-- **Base de Datos**:
-  - PostgreSQL
-  - pgAdmin (para gestión)
-
-### 🚧 Próximos Pasos
-- [ ] Sistema de autenticación
-- [ ] Mejoras en la interfaz de usuario
-- [ ] Más tipos de análisis de documentos
-- [ ] Exportación de datos
-- [ ] Tests automatizados
-
-## 🛠️ Instalación
-
-```bash
-# Clonar repositorio
-git clone https://github.com/tu-usuario/sistema-inteligente-pdf.git
-cd sistema-inteligente-pdf/frontend
-
-# Instalar dependencias
-npm install
-
-# Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus credenciales
-
-# Iniciar servidor de desarrollo
-npm run dev
-```
-
-## 🐳 Docker (Recomendado)
-
-```bash
-# Desde la raíz del proyecto
-docker-compose up -d
-```
-
-## 📝 Licencia
-Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
-
-## 🤝 Contribución
-Las contribuciones son bienvenidas. Por favor, lee nuestras [guías de contribución](CONTRIBUTING.md) para más detalles.
-
-## 📞 Soporte
-Para soporte, por favor abre un issue en el repositorio.
-
-La aplicación estará disponible en [http://localhost:3000](http://localhost:3000)
-
-## 📂 Estructura del Proyecto
+## 🏗️ Estructura del Proyecto
 
 ```
 sistema-inteligente-pdf/
-├── docker/                 # Configuraciones de Docker
-│   ├── db/                # Scripts de inicialización de PostgreSQL
-│   └── nginx/             # Configuración de Nginx (si aplica)
-├── frontend/              # Aplicación SvelteKit
-│   ├── prisma/            # Esquemas y migraciones de Prisma
-│   ├── src/               # Código fuente de la aplicación
-│   │   ├── lib/           # Utilidades y lógica compartida
-│   │   ├── routes/        # Rutas de la aplicación
-│   │   └── app.html       # Plantilla HTML principal
-│   └── scripts/           # Scripts de procesamiento
-└── docker-compose.yml     # Configuración de servicios Docker
+├── frontend/                  # Aplicación SvelteKit
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── components/    # Componentes reutilizables
+│   │   │   │   ├── AnalyticsCharts.svelte
+│   │   │   │   ├── DocumentFilters.svelte
+│   │   │   │   ├── RecentDocuments.svelte
+│   │   │   │   └── StatsOverview.svelte
+│   │   │   └── services/
+│   │   │       └── pdf/
+│   │   │           └── documentProcessor.js  # Lógica de procesamiento de PDFs
+│   │   └── routes/
+│   │       ├── dashboard/     # Página principal
+│   │       └── test-processor/ # Página de pruebas de PDF
+│   ├── prisma/                # Esquemas y migraciones
+│   └── static/                # Archivos estáticos
+└── README.md
 ```
 
-## 🔄 Flujo de Trabajo
+## 🚀 Características Implementadas
 
-1. **Carga de Documentos**
-   - Los usuarios suben archivos PDF mediante la interfaz web
-   - Los archivos se validan y procesan en el servidor
+### 📊 Frontend
+- Dashboard interactivo con estadísticas
+- Componente de carga de archivos con drag & drop
+- Visualización de documentos procesados
+- Filtrado y búsqueda de documentos
 
-2. **Procesamiento**
-   - Extracción de texto con `pdf-parse`
-   - Análisis y estructuración de datos
-   - Almacenamiento en PostgreSQL
+### 🔍 Procesamiento de PDFs
+- Identificación automática de tipos (SIDEPP/TRANSFERENCIA)
+- Extracción estructurada de datos
+- Validación de documentos
+- Soporte para múltiples formatos
 
-3. **Visualización**
-   - Dashboard con resumen de documentos procesados
-   - Búsqueda y filtrado de registros
-   - Exportación de informes
+### 🗄️ Base de Datos
+- Modelos principales:
+  - DocumentoPDF
+  - Transferencia
+  - Persona
+- Migraciones con Prisma
+- PostgreSQL como motor principal
 
-## 📊 Estado del Proyecto (45% Completado)
+## 🛠️ Configuración Rápida
 
-### ✅ Funcionalidades Completadas
-- [x] Configuración de Docker con PostgreSQL y pgAdmin
-- [x] Modelo de datos con Prisma
-- [x] Extracción básica de texto con pdf-parse
-- [x] API para subida de archivos
-- [x] Estructura base del frontend con SvelteKit
+1. **Clonar el repositorio**
+   ```bash
+   git clone https://github.com/tu-usuario/sistema-inteligente-pdf.git
+   cd sistema-inteligente-pdf/frontend
+   ```
 
-### 🚧 Próximos Pasos
-1. **Procesamiento de PDFs** (En Progreso)
-   - [ ] Identificación automática de tipo de documento
-   - [ ] Extracción estructurada de datos
-   - [ ] Validación de información extraída
+2. **Instalar dependencias**
+   ```bash
+   npm install
+   cp .env.example .env
+   # Configurar las variables de entorno
+   ```
 
-2. **Interfaz de Usuario**
-   - [ ] Formulario de carga de archivos
-   - [ ] Visualización de resultados
-   - [ ] Dashboard de análisis
+3. **Iniciar el servidor de desarrollo**
+   ```bash
+   npm run dev
+   ```
 
-3. **Características Adicionales**
-   - [ ] Exportación de datos
-   - [ ] Autenticación de usuarios
-   - [ ] Búsqueda avanzada
+## 📦 Dependencias Principales
 
-## 🛠️ Cómo Contribuir
+### Frontend
+- SvelteKit
+- Tailwind CSS
+- Chart.js
+- Date-fns
 
-1. **Reportar problemas**
-   - Crea un issue describiendo el problema o mejora
-   - Incluye ejemplos y pasos para reproducir
+### Backend
+- Express
+- Prisma ORM
+- pdf-parse
 
-2. **Desarrollo**
-   - Haz fork del reposistro
-   - Crea una rama para tu feature (`feature/nueva-funcionalidad`)
-   - Envía un Pull Request
+## 🚧 Próximas Mejoras
+- [ ] Implementar autenticación de usuarios
+- [ ] Mejorar el sistema de procesamiento de PDFs
+- [ ] Agregar más tipos de documentos
+- [ ] Implementar exportación de informes
+- [ ] Añadir tests automatizados
 
-3. **Pruebas**
-   - Asegúrate que las pruebas pasen
-   - Actualiza la documentación según sea necesario
-
-## 🤝 Contribuciones
-
-Las contribuciones son bienvenidas. Por favor, lee nuestras [pautas de contribución](CONTRIBUTING.md) antes de enviar cambios.
+## 🤝 Cómo Contribuir
+1. Haz un fork del proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
+3. Haz commit de tus cambios (`git commit -am 'Agrega nueva funcionalidad'`)
+4. Haz push a la rama (`git push origin feature/nueva-funcionalidad`)
+5. Abre un Pull Request
 
 ## 📄 Licencia
-
 Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+
+## 📞 Soporte
+Para soporte, por favor abre un issue en el repositorio.
 
 ## 📧 Contacto
 

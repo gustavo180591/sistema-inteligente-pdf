@@ -38,7 +38,8 @@
   // Get stat cards configuration
   let statCards: StatCard[] = [];
   
-  $: {
+  // Simplificar la reactividad para evitar errores
+  function updateStatCards() {
     statCards = [
       {
         name: 'Total Procesados',
@@ -75,6 +76,11 @@
         color: 'bg-red-500'
       }
     ];
+  }
+  
+  // Actualizar las tarjetas cuando cambien las estadísticas
+  $: if (stats) {
+    updateStatCards();
   }
 </script>
 
