@@ -283,20 +283,16 @@ class DocumentProcessor {
    * @returns {Promise<ProcesarPDFResultado>} Resultado del procesamiento
    */
   async processPdf(file) {
-    if (!(file instanceof File)) {
-      throw new TypeError('Se esperaba un objeto File');
-    }
-
     try {
+      if (!(file instanceof File)) {
+        throw new Error('Se esperaba un objeto File válido');
+      }
+
       const arrayBuffer = await file.arrayBuffer();
-      const pdfData = new Uint8Array(arrayBuffer);
-      const textResult = await this.extractText(pdfData);
-      const text = textResult.text || '';
-      const numPages = textResult.numpages || 1;
-      
+      const { text, numpages } = await this.extractText(new Uint8Array(arrayBuffer));
       const docType = this.identifyDocumentType(text);
+      const numPages = numpages; // Alias to maintain camelCase in the rest of the code
       
-      /** @type {ProcesarPDFResultado} */
       let result;
       
       switch (docType) {
@@ -318,22 +314,20 @@ class DocumentProcessor {
         }
         case this.documentTypes.TRANSFER: {
           const transferData = await this.processTransfer(text);
-          // Asegurarse de que los metadatos estén completos
-          const baseMetadata = transferData.metadata || {};
-          const extractedAt = 'extractedAt' in baseMetadata ? baseMetadata.extractedAt : new Date().toISOString();
-          
-          /** @type {import('./types').PDFMetadata} */
-          const metadata = {
-            fileName: file.name,
-            fileSize: file.size,
-            pages: numPages,
-            extractedAt
-          };
-          
-          return {
+          this.validateDocumentData(transferData.data, docType);
+          result = {
             ...transferData,
-            metadata
+            success: true,
+            type: docType,
+            metadata: {
+              ...(transferData.metadata || {}),
+              fileName: file.name,
+              fileSize: file.size,
+              pages: numPages,
+              extractedAt: new Date().toISOString()
+            }
           };
+          break;
         }
         default:
           throw new Error('Tipo de documento no soportado');
