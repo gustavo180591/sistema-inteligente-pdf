@@ -1,158 +1,351 @@
 // frontend/src/lib/services/pdf/documentProcessor.js
-import { parse } from 'pdf-parse/lib/pdf-parse.js';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configurar el worker de PDF.js
+const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry.js');
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default;
+
+/**
+ * Procesador de documentos PDF para extracción estructurada de datos
+ * @class DocumentProcessor
+ */
+/**
+ * @typedef {Object} DocumentoPDF
+ * @property {string} [periodo]
+ * @property {string} [fecha]
+ * @property {Array<Object>} [personas]
+ * @property {number} [totalPersonas]
+ * @property {number} [totalImporte]
+ * @property {string} [cbuOrigen]
+ * @property {string} [cbuDestino]
+ * @property {number} [monto]
+ * @property {string} [moneda]
+ */
+
+/**
+ * @typedef {Object} ProcesarPDFResultado
+ * @property {boolean} success
+ * @property {string} type
+ * @property {DocumentoPDF} data
+ * @property {Object} [metadata]
+ */
+
+const DOCUMENT_TYPES = Object.freeze({
+  SIDEPP: 'SIDEPP',
+  TRANSFER: 'TRANSFERENCIA',
+  UNKNOWN: 'DESCONOCIDO'
+});
 
 class DocumentProcessor {
   constructor() {
-    this.documentTypes = {
-      SIDEPP: 'SIDEPP',
-      TRANSFER: 'TRANSFERENCIA',
-      UNKNOWN: 'DESCONOCIDO'
+    this.documentTypes = DOCUMENT_TYPES;
+    
+    // Patrones precompilados para mejor rendimiento
+    this.patterns = {
+      sidepp: [
+        /sidepp/iu,
+        /sistema\s+de\s+informaci[oó]n\s+de\s+empleadores\s+del\s+sector\s+p[uú]blico/iu,
+        /liquidaci[oó]n\s+de\s+haberes/iu
+      ],
+      transfer: [
+        /transferencia\s+bancaria/iu,
+        /orden\s+de\s+transferencia/iu,
+        /cbu\s+origen/iu,
+        /cbu\s+destino/iu
+      ]
+    };
+
+    // Expresiones regulares para extraer datos de transferencias
+    this.regex = {
+      cbu: /CBU\s+(Origen|Destino):\s*([0-9]{22})/gi,
+      monto: /Monto:\s*\$?\s*([0-9.,]+)/i,
+      fecha: /Fecha:\s*([0-9]{2}[/-][0-9]{2}[-/][0-9]{4})/i,
+      // Expresiones regulares para SIDEPP
+      periodo: /Per[ií]odo:\s*([A-Za-z]+\s+[0-9]{4})/i,
+      persona: /(\d+)\s+([\w\s]+)\s+(\d+)\s+([\d.,]+)/,
+      totalPersonas: /Total de personas:\s*(\d+)/i,
+      totalImporte: /Total importe:\s*\$?\s*([\d.,]+)/i,
+      // Expresiones para datos personales
+      nombre: /Nombre:\s*([^\n]+)/i,
+      dni: /DNI:\s*(\d{7,8})/i,
+      cuil: /CUIL:\s*(\d{2}-\d{8}-\d{1})/i
     };
   }
 
-  async processPdf(file) {
+  /**
+   * Procesa un archivo PDF y extrae su información estructurada
+   * @param {File} file - Archivo PDF a procesar
+   * @returns {Promise<ProcesarPDFResultado>} Resultado del procesamiento
+   */
+  /**
+   * @typedef {Object} PDFTextMetadata
+   * @property {string} text - Texto extraído del PDF
+   * @property {number} [numpages] - Número de páginas del PDF
+   */
+
+  /**
+   * Procesa un archivo PDF y extrae su información estructurada
+
+  /**
+   * Extrae texto de un archivo PDF
+   * @param {Uint8Array} pdfData - Datos del PDF como Uint8Array
+   * @returns {Promise<{text: string, numpages: number}>} Texto extraído y número de páginas
+   */
+  async extractText(pdfData) {
     try {
-      // 1. Leer el archivo PDF
+      // Cargar el documento PDF
+      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+      const pdf = await loadingTask.promise;
+      
+      let fullText = '';
+      
+      // Extraer texto de cada página
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map(item => 'str' in item ? item.str : '')
+          .join(' ');
+        fullText += pageText + '\n\n';
+      }
+      
+      return {
+        text: fullText,
+        numpages: pdf.numPages
+      };
+    } catch (error) {
+      console.error('Error al extraer texto del PDF:', error);
+      throw new Error('No se pudo extraer texto del archivo PDF');
+    }
+  }
+
+  /**
+   * Identifica el tipo de documento basado en su contenido
+   * @param {string} text - Texto extraído del PDF
+   * @returns {string} Tipo de documento (SIDEPP, TRANSFER, etc.)
+   */
+  identifyDocumentType(text) {
+    if (!text || typeof text !== 'string') {
+      return this.documentTypes.UNKNOWN;
+    }
+
+    if (text.includes('SIDEPP') || text.includes('Sistema de Declaraciones Patrimoniales')) {
+      return this.documentTypes.SIDEPP;
+    }
+
+    if (text.includes('Transferencia') || text.match(/CBU\s+(Origen|Destino):/i)) {
+      return this.documentTypes.TRANSFER;
+    }
+
+    return this.documentTypes.UNKNOWN;
+  }
+
+  /**
+   * Procesa un documento SIDEPP
+   * @param {string} text - Texto extraído del PDF
+   * @returns {Promise<DocumentoPDF>} Datos estructurados del SIDEPP
+   */
+  async processSIDEPP(text) {
+    if (typeof text !== 'string') {
+      throw new Error('Se esperaba un texto válido');
+    }
+
+    // Reiniciar índices de expresiones regulares
+    Object.values(this.regex).forEach(regex => {
+      if (regex instanceof RegExp) {
+        regex.lastIndex = 0;
+      }
+    });
+
+    const periodoMatch = this.regex.periodo.exec(text);
+    const totalPersonasMatch = this.regex.totalPersonas.exec(text);
+    const totalImporteMatch = this.regex.totalImporte.exec(text);
+
+    // Extraer personas del texto
+    const lineasPersona = text.split('\n')
+      .filter(linea => this.regex.persona.test(linea))
+      .map(linea => {
+        const match = this.regex.persona.exec(linea);
+        if (!match || match.length < 5) {
+          return null;
+        }
+        return {
+          legajo: match[1],
+          nombre: match[2].trim(),
+          documento: match[3],
+          importe: parseFloat(match[4].replace(/\./g, '').replace(',', '.'))
+        };
+      })
+      .filter(item => item !== null);
+
+    /** @type {DocumentoPDF} */
+    const result = {
+      periodo: periodoMatch ? periodoMatch[1].trim() : '',
+      personas: lineasPersona,
+      totalPersonas: totalPersonasMatch ? parseInt(totalPersonasMatch[1], 10) : lineasPersona.length,
+      totalImporte: totalImporteMatch 
+        ? parseFloat(totalImporteMatch[1].replace(/\./g, '').replace(',', '.')) 
+        : lineasPersona.reduce((sum, p) => sum + p.importe, 0)
+    };
+
+    return result;
+  }
+
+  /**
+   * Procesa un documento de transferencia
+   * @param {string} text - Texto extraído del PDF
+   * @returns {Promise<ProcesarPDFResultado>} Resultado del procesamiento de transferencia
+   */
+  async processTransfer(text) {
+    if (typeof text !== 'string') {
+      throw new Error('Se esperaba un texto válido');
+    }
+
+    // Resetear el índice de la expresión regular global
+    this.regex.cbu.lastIndex = 0;
+    
+    const cbuMatches = Array.from(text.matchAll(this.regex.cbu) || []);
+    const montoMatch = this.regex.monto.exec(text);
+    const fechaMatch = this.regex.fecha.exec(text);
+
+    // Validar CBUs
+    const cbuOrigenMatch = cbuMatches.find(match => match[1].toLowerCase() === 'origen');
+    const cbuDestinoMatch = cbuMatches.find(match => match[1].toLowerCase() === 'destino');
+
+    if (!cbuOrigenMatch || !cbuDestinoMatch) {
+      throw new Error('No se encontraron los CBUs de origen y/o destino');
+    }
+
+    const monto = montoMatch ? parseFloat(montoMatch[1].replace(/\./g, '').replace(',', '.')) : 0;
+    const fecha = fechaMatch ? fechaMatch[1] : new Date().toISOString().split('T')[0];
+
+    /** @type {ProcesarPDFResultado} */
+    return {
+      success: true,
+      type: this.documentTypes.TRANSFER,
+      data: {
+        cbuOrigen: cbuOrigenMatch[2] || '',
+        cbuDestino: cbuDestinoMatch[2] || '',
+        monto,
+        fecha,
+        moneda: 'ARS'
+      },
+      metadata: {
+        extractedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  /**
+   * Valida los datos extraídos del documento
+   * @param {DocumentoPDF} data - Datos a validar
+   * @param {string} type - Tipo de documento
+   * @throws {Error} Si la validación falla
+   */
+  validateDocumentData(data, type) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Datos del documento no proporcionados o inválidos');
+    }
+
+    switch (type) {
+      case this.documentTypes.SIDEPP:
+        if (!data.periodo || typeof data.periodo !== 'string') {
+          throw new Error('Período no especificado o inválido');
+        }
+        if (!data.personas || !Array.isArray(data.personas)) {
+          throw new Error('Formato de personas inválido');
+        }
+        break;
+
+      case this.documentTypes.TRANSFER:
+        if (!data.cbuOrigen || typeof data.cbuOrigen !== 'string' || data.cbuOrigen.length !== 22) {
+          throw new Error('CBU de origen es requerido y debe tener 22 dígitos');
+        }
+        if (!data.cbuDestino || typeof data.cbuDestino !== 'string' || data.cbuDestino.length !== 22) {
+          throw new Error('CBU de destino es requerido y debe tener 22 dígitos');
+        }
+        if (typeof data.monto !== 'number' || isNaN(data.monto) || data.monto <= 0) {
+          throw new Error('Monto inválido');
+        }
+        if (!data.fecha || typeof data.fecha !== 'string') {
+          throw new Error('Fecha inválida');
+        }
+        break;
+
+      default:
+        throw new Error(`Tipo de documento no soportado: ${type}`);
+    }
+  }
+
+  /**
+   * Procesa un documento PDF
+   * @param {File} file - Archivo PDF a procesar
+   * @returns {Promise<ProcesarPDFResultado>} Resultado del procesamiento
+   */
+  async processPdf(file) {
+    if (!(file instanceof File)) {
+      throw new TypeError('Se esperaba un objeto File');
+    }
+
+    try {
       const arrayBuffer = await file.arrayBuffer();
       const pdfData = new Uint8Array(arrayBuffer);
+      const textResult = await this.extractText(pdfData);
+      const text = textResult.text || '';
+      const numPages = textResult.numpages || 1;
       
-      // 2. Extraer texto
-      const text = await this.extractText(pdfData);
-      
-      // 3. Identificar tipo de documento
       const docType = this.identifyDocumentType(text);
       
-      // 4. Procesar según el tipo
+      /** @type {ProcesarPDFResultado} */
       let result;
+      
       switch (docType) {
-        case this.documentTypes.SIDEPP:
-          result = this.processSIDEPP(text);
+        case this.documentTypes.SIDEPP: {
+          const sideppData = await this.processSIDEPP(text);
+          this.validateDocumentData(sideppData, docType);
+          result = {
+            success: true,
+            type: docType,
+            data: sideppData,
+            metadata: {
+              fileName: file.name,
+              fileSize: file.size,
+              pages: numPages,
+              extractedAt: new Date().toISOString()
+            }
+          };
           break;
-        case this.documentTypes.TRANSFER:
-          result = this.processTransfer(text);
-          break;
+        }
+        case this.documentTypes.TRANSFER: {
+          const transferData = await this.processTransfer(text);
+          // Asegurarse de que los metadatos estén completos
+          const baseMetadata = transferData.metadata || {};
+          const extractedAt = 'extractedAt' in baseMetadata ? baseMetadata.extractedAt : new Date().toISOString();
+          
+          /** @type {import('./types').PDFMetadata} */
+          const metadata = {
+            fileName: file.name,
+            fileSize: file.size,
+            pages: numPages,
+            extractedAt
+          };
+          
+          return {
+            ...transferData,
+            metadata
+          };
+        }
         default:
           throw new Error('Tipo de documento no soportado');
       }
       
-      return {
-        success: true,
-        type: docType,
-        data: result,
-        metadata: {
-          pages: text.numpages,
-          text: text.text
-        }
-      };
+      return result;
     } catch (error) {
       console.error('Error procesando PDF:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      throw error;
     }
-  }
-
-  async extractText(pdfData) {
-    try {
-      return await parse(pdfData, {
-        max: 1 // Procesar solo la primera página inicialmente
-      });
-    } catch (error) {
-      console.error('Error extrayendo texto del PDF:', error);
-      throw new Error('No se pudo extraer texto del PDF');
-    }
-  }
-
-  identifyDocumentType(text) {
-    const content = text.text.toLowerCase();
-    
-    // Patrones para identificar SIDEPP
-    const sideppPatterns = [
-      /sidepp/i,
-      /sistema de información de empleadores del sector público/i,
-      /liquidación de haberes/i
-    ];
-    
-    // Patrones para identificar Transferencias
-    const transferPatterns = [
-      /transferencia bancaria/i,
-      /orden de transferencia/i,
-      /cbu origen/i,
-      /cbu destino/i
-    ];
-    
-    const sideppMatch = sideppPatterns.some(pattern => pattern.test(content));
-    const transferMatch = transferPatterns.some(pattern => pattern.test(content));
-    
-    if (sideppMatch) return this.documentTypes.SIDEPP;
-    if (transferMatch) return this.documentTypes.TRANSFER;
-    
-    return this.documentTypes.UNKNOWN;
-  }
-
-  processSIDEPP(text) {
-    // Implementar lógica específica para SIDEPP
-    const lines = text.text.split('\n').filter(line => line.trim() !== '');
-    
-    // Extraer datos básicos
-    const periodoMatch = text.text.match(/per[ií]odo\s*:\s*([^\n]+)/i);
-    const fechaMatch = text.text.match(/fecha\s*:\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i);
-    
-    // Extraer personas
-    const personas = [];
-    // ... lógica para extraer personas ...
-    
-    return {
-      periodo: periodoMatch ? periodoMatch[1].trim() : null,
-      fecha: fechaMatch ? fechaMatch[1].trim() : null,
-      totalPersonas: personas.length,
-      personas
-    };
-  }
-
-  processTransfer(text) {
-    // Implementar lógica específica para Transferencias
-    const lines = text.text.split('\n').filter(line => line.trim() !== '');
-    
-    // Extraer datos básicos
-    const cbuOrigenMatch = text.text.match(/cbu origen\s*:\s*([0-9]+)/i);
-    const cbuDestinoMatch = text.text.match(/cbu destino\s*:\s*([0-9]+)/i);
-    const montoMatch = text.text.match(/monto\s*:\s*([0-9]+\,[0-9]{2})/i);
-    
-    return {
-      cbuOrigen: cbuOrigenMatch ? cbuOrigenMatch[1].trim() : null,
-      cbuDestino: cbuDestinoMatch ? cbuDestinoMatch[1].trim() : null,
-      monto: montoMatch ? montoMatch[1].trim() : null,
-      fecha: new Date().toISOString().split('T')[0]
-    };
-  }
-
-  validateDocumentData(data, type) {
-    // Validaciones comunes
-    if (!data) {
-      throw new Error('Datos del documento no proporcionados');
-    }
-    
-    // Validaciones específicas por tipo
-    switch (type) {
-      case this.documentTypes.SIDEPP:
-        if (!data.periodo) throw new Error('Período no especificado');
-        if (!data.personas || data.personas.length === 0) {
-          throw new Error('No se encontraron personas en el documento');
-        }
-        break;
-        
-      case this.documentTypes.TRANSFER:
-        if (!data.cbuOrigen || !data.cbuDestino) {
-          throw new Error('CBU de origen y destino son requeridos');
-        }
-        if (!data.monto) throw new Error('Monto no especificado');
-        break;
-    }
-    
-    return true;
   }
 }
 
+/** @type {DocumentProcessor} */
 export const documentProcessor = new DocumentProcessor();

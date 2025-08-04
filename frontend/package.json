@@ -50,8 +50,10 @@
 		"vite": "^7.0.4"
 	},
 	"dependencies": {
+		"@types/pdfjs-dist": "^2.10.377",
 		"pdf-lib": "^1.17.1",
 		"pdf2pic": "^3.2.0",
+		"pdfjs-dist": "^2.16.105",
 		"tesseract.js": "^6.0.1",
 		"uuid": "^11.1.0"
 	}
