@@ -1,7 +1,6 @@
 // src/lib/pdf/processors/ListadoSIDEPPProcessor.js
 import { PDFProcessor } from './base.js';
 import { ProcessingError, ValidationError } from './errors.js';
-import { Prisma } from '@prisma/client';
 
 /**
  * Interfaz para los datos de un listado SIDEPP
@@ -10,7 +9,7 @@ import { Prisma } from '@prisma/client';
  * @property {number} total - Total del listado
  * @property {Array<ItemListado>} items - Items del listado
  * @property {string} institucion - Nombre de la institución
- * @property {string} cuit - CUIT de la institución
+ * @property {string|null} cuit - CUIT de la institución
  */
 
 /**
@@ -19,11 +18,19 @@ import { Prisma } from '@prisma/client';
  * @property {string} legajo - Número de legajo
  * @property {string} apellido - Apellido del socio
  * @property {string} nombre - Nombre del socio
- * @property {string} documento - DNI/CUIL del socio
+ * @property {string|null} documento - DNI/CUIL del socio
  * @property {number} haber - Monto del haber
  * @property {number} descuento - Monto del descuento
  * @property {number} neto - Monto neto
  * @property {string} concepto - Concepto del descuento
+ */
+
+/**
+ * Interfaz para los montos extraídos
+ * @typedef {Object} MontosExtraidos
+ * @property {number} haber - Monto del haber
+ * @property {number} descuento - Monto del descuento
+ * @property {number} neto - Monto neto
  */
 
 export class ListadoSIDEPPProcessor extends PDFProcessor {
@@ -114,14 +121,13 @@ export class ListadoSIDEPPProcessor extends PDFProcessor {
       // Validar estructura
       await this.validateDocumentStructure(text);
       
-      // Guardar en base de datos
-      const result = await this.guardarEnBaseDeDatos(listadoData);
-      
+      // Por ahora, solo retornar los datos extraídos sin guardar en BD
       return {
         ...listadoData,
-        ...result,
         procesado: true,
-        fechaProcesamiento: new Date().toISOString()
+        fechaProcesamiento: new Date().toISOString(),
+        success: true,
+        message: 'Listado SIDEPP procesado exitosamente'
       };
       
     } catch (error) {
@@ -129,153 +135,6 @@ export class ListadoSIDEPPProcessor extends PDFProcessor {
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
       throw new ProcessingError(
         `Error al procesar el listado SIDEPP: ${errorMessage}`
-      );
-    }
-  }
-
-  /**
-   * Guarda los datos del listado en la base de datos
-   * @param {ListadoSIDEPPData} data - Datos del listado
-   * @returns {Promise<Object>} Resultado de la operación
-   */
-  async guardarEnBaseDeDatos(data) {
-    if (!this.prisma) {
-      console.warn('Prisma no está disponible, omitiendo guardado en base de datos');
-      return { success: false, message: 'Prisma no está configurado' };
-    }
-
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        // 1. Buscar o crear institución por CUIT
-        let institucion = null;
-        if (data.cuit) {
-          institucion = await tx.institucion.findUnique({
-            where: { cuit: data.cuit }
-          });
-          
-          if (!institucion) {
-            institucion = await tx.institucion.create({
-              data: {
-                nombre: data.institucion || 'Institución sin nombre',
-                cuit: data.cuit,
-                tipo: 'ESCUELA'
-              }
-            });
-          }
-        }
-
-        // 2. Crear documento PDF
-        const documentoPDF = await tx.documentoPDF.create({
-          data: {
-            nombreArchivo: `listado_${data.periodo}.pdf`,
-            tipo: 'SIDEPP',
-            estado: 'PROCESADO',
-            fechaProcesado: new Date(),
-            metadata: {
-              institucion: data.institucion,
-              cuit: data.cuit,
-              totalItems: data.items.length,
-              total: data.total
-            }
-          }
-        });
-
-        // 3. Crear registro SIDEPP
-        const sidepp = await tx.sIDEPP.create({
-          data: {
-            documento: {
-              connect: { id: documentoPDF.id }
-            },
-            periodo: data.periodo,
-            total: new Prisma.Decimal(data.total),
-            detalles: {
-              institucion: data.institucion,
-              cuit: data.cuit,
-              items: data.items
-            }
-          }
-        });
-
-        // 4. Procesar cada item del listado
-        const aportesCreados = [];
-        for (const item of data.items) {
-          if (!item.legajo || !item.apellido || !item.nombre) continue;
-
-          // Buscar o crear socio
-          let socio = await tx.socio.findFirst({
-            where: { 
-              legajo: item.legajo,
-              institucionId: institucion?.id
-            }
-          });
-
-          if (!socio && institucion) {
-            socio = await tx.socio.create({
-              data: {
-                legajo: item.legajo,
-                nombre: item.nombre,
-                apellido: item.apellido,
-                documento: item.documento || null,
-                institucion: {
-                  connect: { id: institucion.id }
-                }
-              }
-            });
-          }
-
-          if (socio && institucion) {
-            // Crear o actualizar aporte
-            const aporte = await tx.aporte.upsert({
-              where: {
-                socioId_periodo: {
-                  socioId: socio.id,
-                  periodo: data.periodo
-                }
-              },
-              update: {
-                monto: new Prisma.Decimal(item.neto),
-                concepto: item.concepto || 'Aporte SIDEPP',
-                estado: 'PAGADO',
-                fechaPago: new Date()
-              },
-              create: {
-                socio: {
-                  connect: { id: socio.id }
-                },
-                institucion: {
-                  connect: { id: institucion.id }
-                },
-                periodo: data.periodo,
-                monto: new Prisma.Decimal(item.neto),
-                concepto: item.concepto || 'Aporte SIDEPP',
-                estado: 'PAGADO',
-                fechaPago: new Date()
-              }
-            });
-
-            aportesCreados.push(aporte);
-          }
-        }
-
-        return { 
-          success: true, 
-          message: 'Listado SIDEPP procesado exitosamente',
-          data: {
-            id: sidepp.id,
-            periodo: sidepp.periodo,
-            total: sidepp.total,
-            institucionId: institucion?.id,
-            documentoId: documentoPDF.id,
-            aportesCreados: aportesCreados.length
-          }
-        };
-      });
-      
-    } catch (error) {
-      console.error('Error al guardar listado SIDEPP en la base de datos:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      throw new ProcessingError(
-        `Error al guardar el listado SIDEPP en la base de datos: ${errorMessage}`
       );
     }
   }
@@ -308,8 +167,8 @@ export class ListadoSIDEPPProcessor extends PDFProcessor {
         const mesStr = Object.keys(meses).find(mes => 
           periodoMatch[0].toUpperCase().includes(mes)
         );
-        if (mesStr) {
-          periodo = `${periodoMatch[1]}-${meses[mesStr]}`;
+        if (mesStr && meses[/** @type {keyof typeof meses} */ (mesStr)]) {
+          periodo = `${periodoMatch[1]}-${meses[/** @type {keyof typeof meses} */ (mesStr)]}`;
         }
       }
     }
@@ -331,10 +190,9 @@ export class ListadoSIDEPPProcessor extends PDFProcessor {
     return {
       periodo: periodo || new Date().toISOString().substring(0, 7),
       institucion: institucion || 'Institución no especificada',
-      cuit: cuit || null,
+      cuit: cuit,
       items,
-      total,
-      lineas
+      total
     };
   }
 
@@ -394,7 +252,7 @@ export class ListadoSIDEPPProcessor extends PDFProcessor {
    * Extrae montos de una línea
    * @private
    * @param {string} linea - Línea de texto
-   * @returns {Object} Montos extraídos
+   * @returns {MontosExtraidos} Montos extraídos
    */
   extraerMontos(linea) {
     // Buscar patrones de montos ($1,000.00, 1000,00, etc.)

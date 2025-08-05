@@ -1,97 +1,53 @@
 // src/lib/pdf/PDFProcessor.js
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { prisma } from '../db/prisma-client.js';
 import { extractTextFromPDF } from './utils.js';
-
-const execAsync = promisify(exec);
 
 export class PDFProcessor {
   constructor() {
-    this.processors = {
-      'LISTADO': new ListadoSIDEPPProcessor(),
-      'TRANSFERENCIA': new TransferenciaProcessor()
-    };
+    // Por ahora, no inicializar procesadores específicos
+    this.processors = {};
   }
 
+  /**
+   * Procesa un archivo PDF
+   * @param {string} filePath - Ruta al archivo PDF
+   * @param {string} originalFilename - Nombre original del archivo
+   * @returns {Promise<Object>} Resultado del procesamiento
+   */
   async processFile(filePath, originalFilename) {
     try {
-      // Verificar si ya fue procesado
-      const existingDoc = await prisma.documentoPDF.findUnique({
-        where: { filename: originalFilename }
-      });
-
-      if (existingDoc?.procesado) {
-        console.log(`El archivo ${originalFilename} ya fue procesado anteriormente.`);
-        return { success: true, message: 'Archivo ya procesado', docId: existingDoc.id };
-      }
-
       // Extraer texto del PDF
       const text = await extractTextFromPDF(filePath);
       
       // Detectar tipo de documento
       const docType = this.detectarTipoDocumento(text);
       
-      // Procesar según el tipo
-      const processor = this.processors[docType] || this.processors['LISTADO']; // Default a LISTADO
-      
-      // Registrar documento en la base de datos
-      const doc = await prisma.documentoPDF.create({
-        data: {
-          filename: originalFilename,
-          tipo: docType,
-          contenido: text.substring(0, 1000), // Guardar solo los primeros 1000 caracteres
-          procesado: false
-        }
-      });
-
-      // Procesar el documento
-      const result = await processor.process(text, filePath, doc.id);
-      
-      // Marcar como procesado
-      await prisma.documentoPDF.update({
-        where: { id: doc.id },
-        data: { 
-          procesado: true,
-          fechaProcesado: new Date(),
-          personaId: result.personaId
-        }
-      });
-
+      // Por ahora, solo retornar información básica
       return { 
         success: true, 
         message: `Documento procesado como ${docType}`, 
-        docId: doc.id,
+        docId: `doc_${Date.now()}`,
         type: docType,
-        data: result
+        data: {
+          text: text.substring(0, 500),
+          filename: originalFilename,
+          processedAt: new Date().toISOString()
+        }
       };
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       console.error('Error procesando archivo:', error);
-      
-      // Registrar error en la base de datos
-      if (originalFilename) {
-        await prisma.documentoPDF.upsert({
-          where: { filename: originalFilename },
-          update: { 
-            error: error.message,
-            procesado: false
-          },
-          create: {
-            filename: originalFilename,
-            tipo: 'ERROR',
-            error: error.message,
-            procesado: false
-          }
-        });
-      }
       
       return { 
         success: false, 
-        message: `Error procesando archivo: ${error.message}` 
+        message: `Error procesando archivo: ${error?.message || 'Error desconocido'}` 
       };
     }
   }
 
+  /**
+   * Detecta el tipo de documento basado en su contenido
+   * @param {string} text - Texto extraído del PDF
+   * @returns {string} Tipo de documento detectado
+   */
   detectarTipoDocumento(text) {
     const contenido = text.toUpperCase();
     

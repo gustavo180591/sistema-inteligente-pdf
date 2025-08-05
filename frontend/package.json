@@ -51,6 +51,8 @@
 	},
 	"dependencies": {
 		"@types/pdfjs-dist": "^2.10.377",
+		"chart.js": "^4.5.0",
+		"chartjs-adapter-date-fns": "^3.0.0",
 		"pdf-lib": "^1.17.1",
 		"pdf2pic": "^3.2.0",
 		"pdfjs-dist": "^2.16.105",

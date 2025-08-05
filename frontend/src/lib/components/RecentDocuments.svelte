@@ -4,12 +4,8 @@
   
   const prisma = new PrismaClient();
   
-  export let filters = {
-    search: '',
-    type: 'all',
-    startDate: '',
-    endDate: ''
-  };
+  // Propiedad no utilizada por ahora, pero mantenida para compatibilidad futura
+  export let filters: any = {};
 
   let documents = [];
   let isLoading = true;
