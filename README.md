@@ -1,378 +1,313 @@
-# 📄 Sistema Inteligente de Procesamiento de PDF
+# SIDEPP Digital: Plataforma de Gestión Integral de Socios y Aportes Sindicales
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Svelte](https://img.shields.io/badge/Svelte-4A4A55?style=flat&logo=svelte&logoColor=FF3E00)](https://svelte.dev/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+## 📋 Descripción del Proyecto
 
-## 🏗️ Estructura del Proyecto
+SIDEPP Digital es una plataforma web integral que transforma la gestión tradicional de socios y aportes mensuales del sindicato SIDEPP en un sistema digital automatizado. La plataforma permite escanear listados de pagos y comprobantes bancarios, registrar socios e instituciones, visualizar cronológicamente los movimientos, y generar reportes profesionales para presentaciones oficiales.
 
-```
-sistema-inteligente-pdf/
-├── frontend/                  # Aplicación SvelteKit
-│   ├── src/
-│   │   ├── lib/
-│   │   │   ├── components/    # Componentes reutilizables
-│   │   │   │   ├── AnalyticsCharts.svelte
-│   │   │   │   ├── DocumentFilters.svelte
-│   │   │   │   ├── RecentDocuments.svelte
-│   │   │   │   └── StatsOverview.svelte
-│   │   │   └── services/
-│   │   │       └── pdf/
-│   │   │           └── documentProcessor.js  # Lógica de procesamiento de PDFs
-│   │   └── routes/
-│   │       ├── dashboard/     # Página principal
-│   │       └── test-processor/ # Página de pruebas de PDF
-│   ├── prisma/                # Esquemas y migraciones
-│   └── static/                # Archivos estáticos
-└── README.md
-```
+## ✨ Funcionalidades Principales
 
-## 🚀 Características Implementadas
+### 🔍 Escaneo Automático de PDF con Detección de Pagos
+- **OCR Inteligente**: Utiliza Tesseract.js para extraer texto de PDFs escaneados
+- **Detección Automática**: Clasifica automáticamente documentos (listados SIDEPP, transferencias bancarias)
+- **Extracción de Datos**: Detecta nombres, montos, CUIT, fechas, legajos automáticamente
+- **Validación**: Verifica la integridad y formato de los datos extraídos
 
-### 📊 Frontend
-- Dashboard interactivo con estadísticas
-- Componente de carga de archivos con drag & drop
-- Visualización de documentos procesados
-- Filtrado y búsqueda de documentos
+### 🏫 Registro Digital de Socios e Instituciones
+- **Gestión de Instituciones**: Registro completo con CUIT, dirección, responsable
+- **Gestión de Socios**: Datos personales, legajos, CBU, estado de actividad
+- **Historial Completo**: Seguimiento de cambios de institución, suspensiones, reactivaciones
+- **Búsqueda Avanzada**: Filtros por nombre, legajo, institución, estado
 
-### 🔍 Procesamiento de PDFs
-- Identificación automática de tipos (SIDEPP/TRANSFERENCIA)
-- Extracción estructurada de datos con soporte para múltiples formatos
-- Validación de documentos con verificación de CVU/CBU
-- Plantillas configurables para diferentes formatos de escuelas
-- Procesamiento mediante:
-  - PDF.js para extracción directa de texto
-  - Tesseract.js para OCR cuando sea necesario
-  - Validación de comprobantes bancarios
-- Configuración manual de columnas y formatos
+### 💰 Control Mensual de Aportes y Conciliación
+- **Conciliación Automática**: Cruza listados de aportes con transferencias reales
+- **Detección de Diferencias**: Identifica discrepancias menores y sugiere correcciones
+- **Estados de Pago**: Seguimiento de aportes pendientes, pagados, vencidos
+- **Validación por CUIT**: Asocia automáticamente pagos con socios
 
-### 🗄️ Base de Datos
-- Modelos principales:
-  - DocumentoPDF
-  - Transferencia
-  - Persona
-  - PlantillaDocumento
-  - ConfiguracionEscuela
-- Migraciones con Prisma
-- PostgreSQL como motor principal
+### 📊 Generación de Reportes Profesionales
+- **Múltiples Formatos**: PDF, Excel, CSV
+- **Tipos de Reporte**: Por institución, socios, aportes, transferencias, conciliación
+- **Diseño Oficial**: Incluye logo del sindicato y formato profesional
+- **Exportación**: Descarga directa o envío por email
 
-### 🛠️ Configuración de Plantillas
+### 📈 Dashboard y Analytics
+- **Estadísticas en Tiempo Real**: Resumen de instituciones, socios, aportes
+- **Gráficos Interactivos**: Visualización de tendencias y patrones
+- **Actividad Reciente**: Seguimiento de documentos procesados
+- **Alertas**: Notificaciones de aportes pendientes o errores
 
-Las plantillas permiten definir la estructura de diferentes formatos de documentos. Cada plantilla incluye:
-
-```javascript
-{
-  schoolId: 'school-123',
-  templateName: 'Formato Escuela X',
-  periodFormat: 'MM/YYYY',
-  columns: {
-    id: { header: 'Legajo', type: 'number', required: true },
-    name: { header: 'Nombre', type: 'string', required: true },
-    amount: { header: 'Monto', type: 'currency', required: true }
-  },
-  receipt: {
-    required: true,
-    fields: {
-      date: { pattern: /Fecha:\s*(\d{2}\/\d{2}\/\d{4})/ },
-      amount: { pattern: /Monto:\s*\$?([\d.,]+)/ },
-      destinationCVU: { 
-        value: '1234567890123456789012',
-        pattern: /CBU Destino:\s*([\d]+)/
-      }
-    }
-  }
-}
-```
-
-### 🔄 Flujo de Procesamiento
-
-1. **Carga de Documento**
-   - Subida de archivo PDF
-   - Opción para adjuntar comprobante bancario
-
-2. **Selección de Plantilla**
-   - Detección automática del formato
-   - Selección manual si no se reconoce
-
-3. **Validación**
-   - Verificación de datos requeridos
-   - Validación de montos y fechas
-   - Verificación de CVU/CBU de destino
-
-4. **Confirmación**
-   - Vista previa de datos extraídos
-   - Opción de corrección manual
-   - Confirmación y guardado
-
-## 🛠️ Configuración Rápida
-
-1. **Clonar el repositorio**
-   ```bash
-   git clone https://github.com/tu-usuario/sistema-inteligente-pdf.git
-   cd sistema-inteligente-pdf/frontend
-   ```
-
-2. **Instalar dependencias**
-   ```bash
-   npm install
-   cp .env.example .env
-   # Configurar las variables de entorno
-   ```
-
-3. **Iniciar el servidor de desarrollo**
-   ```bash
-   npm run dev
-   ```
-
-## 📦 Dependencias Principales
+## 🛠️ Tecnologías Utilizadas
 
 ### Frontend
-- SvelteKit
-- Tailwind CSS
-- Chart.js
-- Date-fns
+- **SvelteKit**: Framework moderno para aplicaciones web
+- **Tailwind CSS**: Framework de CSS utilitario
+- **TypeScript**: Tipado estático para mayor robustez
+- **Tesseract.js**: OCR para extracción de texto de imágenes
 
 ### Backend
-- Express
-- Prisma ORM
-- pdf-parse
+- **Node.js**: Runtime de JavaScript
+- **Prisma**: ORM moderno para base de datos
+- **PostgreSQL**: Base de datos relacional robusta
+- **PDF.js**: Procesamiento de archivos PDF
 
-## 🚧 Próximas Mejoras
-- [ ] Implementar autenticación de usuarios
-- [ ] Interfaz de configuración de plantillas
-- [ ] Integración con ChatGPT para análisis de documentos
-- [ ] Mejorar el sistema de OCR con Tesseract.js
-- [ ] Agregar más tipos de documentos
-- [ ] Implementar exportación de informes
-- [ ] Añadir tests automatizados
+### Infraestructura
+- **Docker**: Containerización para desarrollo y despliegue
+- **Docker Compose**: Orquestación de servicios
+- **Nginx**: Servidor web y proxy reverso
 
-## 🤖 Procesamiento Inteligente
+## 🚀 Instalación y Configuración
 
-El sistema utiliza diferentes estrategias según el tipo de documento:
+### Prerrequisitos
+- Node.js 18+ 
+- Docker y Docker Compose
+- PostgreSQL (opcional, se incluye en Docker)
 
-1. **Documentos Estructurados**
-   - Extracción directa de texto con PDF.js
-   - Mapeo de columnas según plantilla
-   - Validación de formatos
-
-2. **Documentos No Estructurados**
-   - Procesamiento OCR con Tesseract.js
-   - Análisis de patrones
-   - Validación cruzada con plantillas
-
-3. **Comprobantes Bancarios**
-   - Verificación de montos
-   - Validación de fechas
-   - Comprobación de CVU/CBU de destino
-
-## 🤝 Cómo Contribuir
-1. Haz un fork del proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Haz commit de tus cambios (`git commit -am 'Agrega nueva funcionalidad'`)
-4. Haz push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Abre un Pull Request
-
-## 📄 Licencia
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
-
-## 📞 Soporte
-Para soporte, por favor abre un issue en el repositorio.
-
-## 📧 Contacto
-
-- **Nombre**: [Tu Nombre]
-- **Email**: [tu@email.com]
-- **LinkedIn**: [enlace a tu perfil]
-
----
-
-<div align="center">
-  Hecho con ❤️ para simplificar el procesamiento de documentos
-</div> Inteligente PDF
-
-🚀 **Sistema inteligente para la carga y análisis automático de PDFs de liquidaciones y transferencias.**  
-Convierte PDFs en registros estructurados en una base de datos **PostgreSQL**, usando **Prisma** y **SvelteKit 2**.
-
----
-
-## 🛠️ Tecnologías
-
-- **Frontend:** SvelteKit 2 + Svelte 5 + Tailwind CSS 4
-- **Backend:** Node.js 22 + Prisma
-- **Base de datos:** PostgreSQL 15 + pgAdmin
-- **Contenedores:** Docker + Docker Compose
-- **OCR / Parsing:** pdf-parse + tesseract.js
-- **Infraestructura:** Pop!_OS / Ubuntu 22.04
-
----
-
-## 📂 Estructura del proyecto
-
-```
-sistema-inteligente-pdf/
- ├─ frontend/                  # SvelteKit 2 + Tailwind 4
- │   ├─ src/routes/upload/     # Endpoint para subir PDFs
- │   ├─ src/lib/services/      # Parser de PDFs y OCR
- │   └─ prisma/                # Esquema de base de datos
- │
- ├─ docker/
- │   └─ db_data/               # Volumen persistente de PostgreSQL
- │
- ├─ docker-compose.yml         # Orquestación de contenedores
- ├─ README.md
- └─ .env                       # Variables de entorno
-```
-
----
-
-## ⚡ Instalación en Pop!_OS
-
-### 1️⃣ Instalar Node.js y Docker
-
+### 1. Clonar el Repositorio
 ```bash
-# Node 22.x ya instalado
-node -v
-npm -v
-
-# Limpiar intentos previos de docker.io
-sudo apt remove --purge docker.io containerd.io docker-compose -y
-sudo apt autoremove -y
-
-# Instalar dependencias base
-sudo apt install ca-certificates curl gnupg lsb-release -y
-
-# Clave GPG de Docker
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-# Repositorio oficial Docker CE
-echo   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]   https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" |   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Instalar Docker CE + CLI + Compose Plugin
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
-
-# Activar docker sin sudo
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-Probar instalación:
-
-```bash
-docker --version
-docker compose version
-docker run hello-world
-```
-
----
-
-### 2️⃣ Clonar el proyecto y configurar
-
-```bash
-git clone git@github.com:desarrollandowebs/sistema-inteligente-pdf.git
+git clone https://github.com/tu-usuario/sistema-inteligente-pdf.git
 cd sistema-inteligente-pdf
 ```
 
-Crear el archivo **`.env`** en la raíz:
-
+### 2. Configurar Variables de Entorno
+Crear archivo `.env` en el directorio raíz:
 ```env
-# ============================
-# ⚙️  Configuración de Backend
-# ============================
-
-# URL de la base de datos para Prisma
-DATABASE_URL="postgresql://admin:admin@db:5432/sistema_pdf?schema=public"
-
-# Puerto donde corre el servidor SvelteKit (Docker usa 3000)
-PORT=3000
-
-# ============================
-# 🔐 Configuración de Seguridad
-# ============================
-
-# JWT para futuras autenticaciones (opcional)
-JWT_SECRET="cambia-esta-clave-super-segura"
-
-# ============================
-# 📦 Configuración de Docker
-# ============================
-
-# Credenciales PostgreSQL
+# Database Configuration
 POSTGRES_USER=admin
-POSTGRES_PASSWORD=admin
+POSTGRES_PASSWORD=password
 POSTGRES_DB=sistema_pdf
-
-# Credenciales de pgAdmin
-PGADMIN_DEFAULT_EMAIL=admin@admin.com
+PGADMIN_DEFAULT_EMAIL=admin@example.com
 PGADMIN_DEFAULT_PASSWORD=admin
 
-# ============================
-# 📄 Configuración de Upload
-# ============================
-
-# Carpeta temporal para PDFs subidos
-UPLOAD_DIR="./uploads"
-
-# Tamaño máximo de archivos (en MB)
-MAX_FILE_SIZE=50
+# Application Configuration
+NODE_ENV=development
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
 ```
 
----
-
-### 3️⃣ Levantar los servicios con Docker
-
+### 3. Iniciar Base de Datos
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
 
-- **PostgreSQL:** `localhost:5432`  
-- **pgAdmin:** `http://localhost:8080` (admin@admin.com / admin)
-
----
-
-### 4️⃣ Inicializar Prisma
-
+### 4. Instalar Dependencias
 ```bash
 cd frontend
 npm install
-npx prisma migrate dev --name init
-npx prisma generate
 ```
 
----
-
-### 5️⃣ Ejecutar el frontend
-
+### 5. Configurar Base de Datos
 ```bash
-npm run dev
+# Generar cliente Prisma
+npm run prisma:generate
+
+# Ejecutar migraciones
+npm run prisma:migrate
 ```
 
-Abrir en `http://localhost:5173`
+### 6. Iniciar Aplicación
+```bash
+# Desarrollo
+npm run dev
+
+# Producción
+npm run build
+npm run preview
+```
+
+## 📁 Estructura del Proyecto
+
+```
+sistema-inteligente-pdf/
+├── frontend/                    # Aplicación SvelteKit
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── components/      # Componentes reutilizables
+│   │   │   ├── pdf/            # Procesamiento de PDF
+│   │   │   │   ├── processors/ # Procesadores específicos
+│   │   │   │   └── utils.js    # Utilidades PDF
+│   │   │   └── services/       # Servicios de API
+│   │   ├── routes/             # Páginas y endpoints
+│   │   └── app.html            # Template HTML
+│   ├── prisma/                 # Esquema y migraciones DB
+│   ├── uploads/                # Archivos subidos
+│   └── static/                 # Archivos estáticos
+├── docker/                     # Configuración Docker
+├── docker-compose.yml          # Orquestación de servicios
+└── README.md                   # Documentación
+```
+
+## 🗄️ Modelo de Datos
+
+### Entidades Principales
+
+#### Institucion
+- Información básica (nombre, CUIT, dirección)
+- Tipo de institución (escuela, cooperativa, fundación)
+- Estado (activa, inactiva, suspendida)
+- Relación con socios y aportes
+
+#### Socio
+- Datos personales (nombre, apellido, documento)
+- Información laboral (legajo, institución)
+- Datos bancarios (CBU)
+- Estado (activo, inactivo, suspendido, retirado)
+
+#### Aporte
+- Período de aporte (YYYY-MM)
+- Monto y concepto
+- Estado (pendiente, pagado, vencido)
+- Relación con socio e institución
+
+#### Transferencia
+- Datos bancarios (CBU origen/destino)
+- Monto y fecha de operación
+- Estado de validación
+- Conciliación con aportes
+
+#### DocumentoPDF
+- Metadatos del archivo procesado
+- Tipo y estado de procesamiento
+- Relación con transferencias o listados SIDEPP
+
+## 🔧 Uso del Sistema
+
+### 1. Carga de Documentos
+1. Acceder a la sección "Cargar Documentos"
+2. Arrastrar o seleccionar archivos PDF
+3. El sistema detecta automáticamente el tipo de documento
+4. Se procesa y extrae la información relevante
+5. Se valida y guarda en la base de datos
+
+### 2. Gestión de Instituciones
+1. Ir a la pestaña "Instituciones"
+2. Crear nueva institución con datos completos
+3. Editar información existente
+4. Gestionar estado (activa/inactiva)
+
+### 3. Gestión de Socios
+1. Acceder a "Socios"
+2. Registrar nuevos socios con datos personales
+3. Asignar a institución correspondiente
+4. Gestionar estado y cambios
+
+### 4. Control de Aportes
+1. Verificar aportes procesados automáticamente
+2. Conciliar con transferencias bancarias
+3. Identificar aportes pendientes
+4. Generar reportes de conciliación
+
+### 5. Generación de Reportes
+1. Seleccionar tipo de reporte
+2. Configurar parámetros (institución, período)
+3. Elegir formato de exportación
+4. Descargar o enviar por email
+
+## 🔒 Seguridad
+
+- **Autenticación JWT**: Tokens seguros para sesiones
+- **Validación de Datos**: Verificación de entrada en todos los formularios
+- **Control de Acceso**: Roles de usuario (admin, user, viewer)
+- **Encriptación**: Contraseñas hasheadas con bcrypt
+- **HTTPS**: Comunicación segura en producción
+
+## 📊 Reportes Disponibles
+
+### Por Institución
+- Lista completa de socios
+- Resumen de aportes por período
+- Estado de pagos y transferencias
+- Estadísticas de cumplimiento
+
+### De Socios
+- Datos personales y laborales
+- Historial completo de aportes
+- Cambios de institución
+- Estado actual
+
+### De Aportes
+- Consolidado por período
+- Detalle por socio
+- Comparación con períodos anteriores
+- Identificación de morosos
+
+### De Transferencias
+- Control de transferencias bancarias
+- Estado de validación
+- Conciliación con aportes
+- Detección de diferencias
+
+### De Conciliación
+- Comparación aportes vs transferencias
+- Identificación de discrepancias
+- Sugerencias de corrección
+- Reporte para auditoría
+
+## 🚀 Despliegue en Producción
+
+### 1. Configurar Variables de Producción
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://user:pass@host:5432/db
+JWT_SECRET=your-production-secret
+```
+
+### 2. Construir Imagen Docker
+```bash
+docker build -t sidepp-digital .
+```
+
+### 3. Desplegar con Docker Compose
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 4. Configurar Nginx
+```nginx
+server {
+    listen 80;
+    server_name tu-dominio.com;
+    
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## 🤝 Contribución
+
+1. Fork el proyecto
+2. Crear rama para feature (`git checkout -b feature/nueva-funcionalidad`)
+3. Commit cambios (`git commit -am 'Agregar nueva funcionalidad'`)
+4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
+5. Crear Pull Request
+
+## 📝 Licencia
+
+Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más detalles.
+
+## 📞 Soporte
+
+Para soporte técnico o consultas:
+- Email: soporte@sidepp-digital.com
+- Documentación: [docs.sidepp-digital.com](https://docs.sidepp-digital.com)
+- Issues: [GitHub Issues](https://github.com/tu-usuario/sistema-inteligente-pdf/issues)
+
+## 🗺️ Roadmap
+
+### Versión 2.0 (Próximamente)
+- [ ] API REST completa
+- [ ] Aplicación móvil
+- [ ] Integración con sistemas bancarios
+- [ ] Notificaciones automáticas
+- [ ] Dashboard avanzado con más analytics
+
+### Versión 2.1
+- [ ] Integración con AFIP
+- [ ] Reportes automáticos por email
+- [ ] Backup automático en la nube
+- [ ] Multi-tenancy para múltiples sindicatos
 
 ---
 
-## 📥 Flujo de carga de PDFs
-
-1. Subís un PDF desde la interfaz web.  
-2. El backend lo procesa:
-   - Si es PDF de texto → usa **pdf-parse**
-   - Si es imagen escaneada → usa **tesseract.js (OCR)**  
-3. Los datos extraídos se guardan en **PostgreSQL** automáticamente.  
-4. Podés verlos en el **dashboard** y exportar reportes.
-
----
-
-## 🔮 Próximos pasos
-
-- [ ] Script de parsing automático de SIDEPP / liquidaciones
-- [ ] Dashboard con filtros por escuela, fechas y conceptos
-- [ ] Exportación a Excel y PDF
-- [ ] Integración con almacenamiento en la nube
-
----
-
-## 📄 Licencia
-
-Proyecto privado / en desarrollo.  
-Autor: **Gustavo (@desarrollandowebs)**
+**SIDEPP Digital** - Transformando la gestión sindical en la era digital 🚀

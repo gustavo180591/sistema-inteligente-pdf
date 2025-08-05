@@ -1,265 +1,450 @@
 // src/lib/pdf/processors/ListadoSIDEPPProcessor.js
-import { PDFProcessor } from './base';
-import { ValidationError } from './errors';
+import { PDFProcessor } from './base.js';
+import { ProcessingError, ValidationError } from './errors.js';
+import { Prisma } from '@prisma/client';
+
+/**
+ * Interfaz para los datos de un listado SIDEPP
+ * @typedef {Object} ListadoSIDEPPData
+ * @property {string} periodo - Período del listado (YYYY-MM)
+ * @property {number} total - Total del listado
+ * @property {Array<ItemListado>} items - Items del listado
+ * @property {string} institucion - Nombre de la institución
+ * @property {string} cuit - CUIT de la institución
+ */
+
+/**
+ * Interfaz para un item del listado
+ * @typedef {Object} ItemListado
+ * @property {string} legajo - Número de legajo
+ * @property {string} apellido - Apellido del socio
+ * @property {string} nombre - Nombre del socio
+ * @property {string} documento - DNI/CUIL del socio
+ * @property {number} haber - Monto del haber
+ * @property {number} descuento - Monto del descuento
+ * @property {number} neto - Monto neto
+ * @property {string} concepto - Concepto del descuento
+ */
 
 export class ListadoSIDEPPProcessor extends PDFProcessor {
-  constructor() {
+  /** @type {import('@prisma/client').PrismaClient} */
+  prisma;
+
+  /**
+   * @param {Object} options
+   * @param {import('@prisma/client').PrismaClient} options.prisma
+   */
+  constructor({ prisma }) {
     super();
-    this.type = 'SIDEPP';
-    this.requiredFields = [
-      'Sistema Integrado de Emisión de Planillas de Pago',
-      'Liquidación de Haberes',
-      'CUIT',
-      'Período'
-    ];
+    this.prisma = prisma;
   }
-  async process(text, filePath, docId = null) {
-    // Validar estructura del documento
-    if (!await this.validateDocumentStructure(text)) {
-      throw new ValidationError('El documento no tiene el formato SIDEPP esperado');
-    }
+  
+  type = 'SIDEPP';
+  requiredFields = ['periodo', 'items'];
 
-    const lineas = text.split('\n').map(l => l.trim()).filter(Boolean);
+  /**
+   * Verifica si este procesador puede manejar el documento
+   * @param {string} text - Texto extraído del PDF
+   * @returns {Promise<boolean>} true si puede procesar el documento
+   */
+  async canProcess(text) {
+    const sideppIndicators = [
+      'LIQUIDACION',
+      'LEGAJO',
+      'APELLIDO',
+      'NOMBRE',
+      'CONCEPTO',
+      'HABER',
+      'DESCUENTO',
+      'NETO',
+      'SIDEPP'
+    ];
     
-    try {
-      // Extraer datos estructurados
-      const periodo = this.extraerPeriodo(text);
-      const { personas, conceptos } = await this.extraerDatosEstructurados(text, lineas);
-      
-      // Validar datos extraídos
-      this.validarDatosExtraidos({ periodo, personas, conceptos });
-      
-      // Usar transacción para asegurar consistencia
-      return await prisma.$transaction(async (tx) => {
-      // 1. Crear o actualizar personas
-      const personasGuardadas = await Promise.all(
-        personas.map(async (p) => {
-          return tx.persona.upsert({
-            where: { 
-              nombre_apellido: {
-                nombre: p.nombre,
-                apellido: p.apellido
-              }
-            },
-            update: {
-              documento: p.documento || undefined,
-              cbu: p.cbu || undefined
-            },
-            create: {
-              nombre: p.nombre,
-              apellido: p.apellido,
-              documento: p.documento,
-              cbu: p.cbu
-            }
-          });
-        })
-      );
-
-      // 2. Crear liquidación
-      const liquidacion = await tx.liquidacion.create({
-        data: {
-          tipo: 'SIDEPP',
-          periodo: periodo,
-          fecha: new Date(),
-          montoTotal: personas.reduce((sum, p) => sum + p.monto, 0),
-          documentoId: docId
-        }
-      });
-
-      // 3. Crear relaciones persona-liquidación
-      await tx.liquidacionPersona.createMany({
-        data: personas.map((p, i) => ({
-          personaId: personasGuardadas[i].id,
-          liquidacionId: liquidacion.id,
-          monto: p.monto,
-          detalles: {
-            documento: p.documento,
-            cbu: p.cbu
-          }
-        }))
-      });
-
-      // 4. Procesar conceptos si existen
-      if (conceptos.length > 0) {
-        await Promise.all(
-          conceptos.map(async (concepto) => {
-            await tx.concepto.upsert({
-              where: { codigo: concepto.codigo },
-              update: {},
-              create: {
-                codigo: concepto.codigo,
-                descripcion: concepto.descripcion,
-                tipo: concepto.tipo
-              }
-            });
-            
-            // Aquí podrías crear LiquidacionConcepto si es necesario
-          })
-        );
-      }
-
-      return {
-        periodo,
-        totalPersonas: personasGuardadas.length,
-        totalConceptos: conceptos.length,
-        detalles: {
-          personas: personasGuardadas,
-          conceptos: conceptos
-        }
-      };
-    });
-  } catch (error) {
-    console.error('Error al procesar documento SIDEPP:', error);
-    throw new ProcessingError(
-      'Error al procesar el documento SIDEPP',
-      'SIDEPP_PROCESSING_ERROR'
+    return sideppIndicators.some(indicator => 
+      text.toUpperCase().includes(indicator)
     );
   }
 
   /**
-   * Extrae datos estructurados del texto del PDF
-   * @private
+   * Valida la estructura del documento
+   * @param {string} text - Texto del documento a validar
+   * @returns {Promise<boolean>} true si la estructura es válida
    */
-  async extraerDatosEstructurados(text, lineas) {
-    const periodo = this.extraerPeriodo(text);
-    const personas = this.extraerPersonas(lineas);
-    const conceptos = this.extraerConceptos(lineas);
-    
-    return { periodo, personas, conceptos };
+  async validateDocumentStructure(text) {
+    try {
+      const data = this.extraerDatosListado(text);
+      
+      if (!data.periodo) {
+        throw new ValidationError('No se pudo detectar el período del listado');
+      }
+
+      if (!data.items || data.items.length === 0) {
+        throw new ValidationError('No se encontraron items en el listado');
+      }
+
+      // Validar que al menos algunos items tengan datos válidos
+      const validItems = data.items.filter(item => 
+        item.legajo && item.apellido && item.nombre && item.neto > 0
+      );
+
+      if (validItems.length === 0) {
+        throw new ValidationError('No se encontraron items válidos en el listado');
+      }
+
+      return true;
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ValidationError('Error al validar la estructura del documento');
+    }
   }
 
   /**
-   * Valida los datos extraídos del documento
-   * @private
+   * Procesa el documento de listado SIDEPP
+   * @param {string} text - Texto extraído del PDF
+   * @param {string} [_filePath] - Ruta al archivo (opcional)
+   * @returns {Promise<Object>} Datos estructurados del listado
    */
-  validarDatosExtraidos({ periodo, personas, conceptos }) {
-    if (!periodo || !periodo.desde || !periodo.hasta) {
-      throw new ValidationError('No se pudo determinar el período del documento', 'periodo');
-    }
-
-    if (!personas || personas.length === 0) {
-      throw new ValidationError('No se encontraron personas en el documento', 'personas');
-    }
-
-    if (!conceptos || conceptos.length === 0) {
-      console.warn('No se encontraron conceptos en el documento');
+  async process(text, _filePath) {
+    try {
+      // Extraer datos estructurados
+      const listadoData = this.extraerDatosListado(text);
+      
+      // Validar estructura
+      await this.validateDocumentStructure(text);
+      
+      // Guardar en base de datos
+      const result = await this.guardarEnBaseDeDatos(listadoData);
+      
+      return {
+        ...listadoData,
+        ...result,
+        procesado: true,
+        fechaProcesamiento: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      console.error('Error procesando listado SIDEPP:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      throw new ProcessingError(
+        `Error al procesar el listado SIDEPP: ${errorMessage}`
+      );
     }
   }
 
-  extraerPeriodo(texto) {
-    // Buscar patrones de fecha como "Periodo: 07/2024" o "Mes: JULIO 2024"
-    const patrones = [
-      /Periodo:\s*(\d{2}\/\d{4})/i,
-      /Mes:\s*([A-Z]+\s+\d{4})/i,
-      /(\d{2}\/\d{4})/ // Cualquier patrón MM/YYYY
-    ];
-
-    for (const patron of patrones) {
-      const match = texto.match(patron);
-      if (match) {
-        return match[1];
-      }
+  /**
+   * Guarda los datos del listado en la base de datos
+   * @param {ListadoSIDEPPData} data - Datos del listado
+   * @returns {Promise<Object>} Resultado de la operación
+   */
+  async guardarEnBaseDeDatos(data) {
+    if (!this.prisma) {
+      console.warn('Prisma no está disponible, omitiendo guardado en base de datos');
+      return { success: false, message: 'Prisma no está configurado' };
     }
 
-    // Si no se encuentra, devolver el mes y año actual
-    const ahora = new Date();
-    return `${String(ahora.getMonth() + 1).padStart(2, '0')}/${ahora.getFullYear()}`;
-  }
-
-  extraerPersonas(lineas) {
-    const personas = [];
-    let enSeccionPersonas = false;
-
-    for (const linea of lineas) {
-      // Buscar inicio de la sección de personas
-      if (linea.includes('Personas') && linea.includes('Tot Remunerativo')) {
-        enSeccionPersonas = true;
-        continue;
-      }
-
-      if (enSeccionPersonas) {
-        // Detener al encontrar totales
-        if (linea.includes('Totales:') || linea.includes('Cantidad de Personas:')) {
-          break;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // 1. Buscar o crear institución por CUIT
+        let institucion = null;
+        if (data.cuit) {
+          institucion = await tx.institucion.findUnique({
+            where: { cuit: data.cuit }
+          });
+          
+          if (!institucion) {
+            institucion = await tx.institucion.create({
+              data: {
+                nombre: data.institucion || 'Institución sin nombre',
+                cuit: data.cuit,
+                tipo: 'ESCUELA'
+              }
+            });
+          }
         }
 
-        // Extraer datos de persona (ajustar según formato exacto)
-        const match = linea.match(/^([A-ZÁÉÍÓÚÑ\s]+?)\s+(\d+[\.,]?\d*)/);
-        if (match) {
-          const nombreCompleto = match[1].trim();
-          const monto = parseFloat(match[2].replace('.', '').replace(',', '.'));
-          
-          // Extraer documento si está en la línea (ajustar según formato)
-          const docMatch = linea.match(/\b\d{7,8}\b/);
-          const documento = docMatch ? docMatch[0] : null;
-          
-          // Extraer CBU si está en la línea (22 dígitos)
-          const cbuMatch = linea.match(/\b\d{22}\b/);
-          const cbu = cbuMatch ? cbuMatch[0] : null;
+        // 2. Crear documento PDF
+        const documentoPDF = await tx.documentoPDF.create({
+          data: {
+            nombreArchivo: `listado_${data.periodo}.pdf`,
+            tipo: 'SIDEPP',
+            estado: 'PROCESADO',
+            fechaProcesado: new Date(),
+            metadata: {
+              institucion: data.institucion,
+              cuit: data.cuit,
+              totalItems: data.items.length,
+              total: data.total
+            }
+          }
+        });
 
-          // Separar apellido y nombre (asumimos formato "APELLIDO NOMBRE")
-          const partes = nombreCompleto.split(/\s+/);
-          const apellido = partes[0] || '';
-          const nombre = partes.slice(1).join(' ') || 'N/N';
+        // 3. Crear registro SIDEPP
+        const sidepp = await tx.sIDEPP.create({
+          data: {
+            documento: {
+              connect: { id: documentoPDF.id }
+            },
+            periodo: data.periodo,
+            total: new Prisma.Decimal(data.total),
+            detalles: {
+              institucion: data.institucion,
+              cuit: data.cuit,
+              items: data.items
+            }
+          }
+        });
 
-          if (nombre && apellido) {
-            personas.push({
-              nombre,
+        // 4. Procesar cada item del listado
+        const aportesCreados = [];
+        for (const item of data.items) {
+          if (!item.legajo || !item.apellido || !item.nombre) continue;
+
+          // Buscar o crear socio
+          let socio = await tx.socio.findFirst({
+            where: { 
+              legajo: item.legajo,
+              institucionId: institucion?.id
+            }
+          });
+
+          if (!socio && institucion) {
+            socio = await tx.socio.create({
+              data: {
+                legajo: item.legajo,
+                nombre: item.nombre,
+                apellido: item.apellido,
+                documento: item.documento || null,
+                institucion: {
+                  connect: { id: institucion.id }
+                }
+              }
+            });
+          }
+
+          if (socio && institucion) {
+            // Crear o actualizar aporte
+            const aporte = await tx.aporte.upsert({
+              where: {
+                socioId_periodo: {
+                  socioId: socio.id,
+                  periodo: data.periodo
+                }
+              },
+              update: {
+                monto: new Prisma.Decimal(item.neto),
+                concepto: item.concepto || 'Aporte SIDEPP',
+                estado: 'PAGADO',
+                fechaPago: new Date()
+              },
+              create: {
+                socio: {
+                  connect: { id: socio.id }
+                },
+                institucion: {
+                  connect: { id: institucion.id }
+                },
+                periodo: data.periodo,
+                monto: new Prisma.Decimal(item.neto),
+                concepto: item.concepto || 'Aporte SIDEPP',
+                estado: 'PAGADO',
+                fechaPago: new Date()
+              }
+            });
+
+            aportesCreados.push(aporte);
+          }
+        }
+
+        return { 
+          success: true, 
+          message: 'Listado SIDEPP procesado exitosamente',
+          data: {
+            id: sidepp.id,
+            periodo: sidepp.periodo,
+            total: sidepp.total,
+            institucionId: institucion?.id,
+            documentoId: documentoPDF.id,
+            aportesCreados: aportesCreados.length
+          }
+        };
+      });
+      
+    } catch (error) {
+      console.error('Error al guardar listado SIDEPP en la base de datos:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      throw new ProcessingError(
+        `Error al guardar el listado SIDEPP en la base de datos: ${errorMessage}`
+      );
+    }
+  }
+
+  /**
+   * Extrae los datos estructurados del texto del listado
+   * @private
+   * @param {string} texto - Texto del PDF
+   * @returns {ListadoSIDEPPData} Datos estructurados del listado
+   */
+  extraerDatosListado(texto) {
+    const lineas = texto.split('\n').map(line => line.trim()).filter(Boolean);
+    const contenido = lineas.join(' ');
+    
+    // Extraer período (buscar patrones como "PERIODO: 2024-01" o "MES: ENERO 2024")
+    const periodoMatch = contenido.match(/(?:PERIODO|MES)[:\s]+(\d{4}[-/]\d{1,2})/i) ||
+                        contenido.match(/(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+(\d{4})/i);
+    
+    let periodo = '';
+    if (periodoMatch) {
+      if (periodoMatch[1].includes('-') || periodoMatch[1].includes('/')) {
+        periodo = periodoMatch[1].replace('/', '-');
+      } else {
+        // Convertir mes a número
+        const meses = {
+          'ENERO': '01', 'FEBRERO': '02', 'MARZO': '03', 'ABRIL': '04',
+          'MAYO': '05', 'JUNIO': '06', 'JULIO': '07', 'AGOSTO': '08',
+          'SEPTIEMBRE': '09', 'OCTUBRE': '10', 'NOVIEMBRE': '11', 'DICIEMBRE': '12'
+        };
+        const mesStr = Object.keys(meses).find(mes => 
+          periodoMatch[0].toUpperCase().includes(mes)
+        );
+        if (mesStr) {
+          periodo = `${periodoMatch[1]}-${meses[mesStr]}`;
+        }
+      }
+    }
+
+    // Extraer CUIT de institución
+    const cuitMatch = contenido.match(/(?:CUIT|C\.U\.I\.T\.)[:\s]*(\d{2}-\d{8}-\d{1})/i);
+    const cuit = cuitMatch ? cuitMatch[1] : null;
+
+    // Extraer nombre de institución
+    const institucionMatch = contenido.match(/(?:INSTITUCION|ESTABLECIMIENTO|ESCUELA)[:\s]+([^\n]+?)(?=\s{2,}|$)/i);
+    const institucion = institucionMatch ? institucionMatch[1].trim() : null;
+
+    // Extraer items del listado
+    const items = this.extraerItemsListado(lineas);
+
+    // Calcular total
+    const total = items.reduce((sum, item) => sum + (item.neto || 0), 0);
+
+    return {
+      periodo: periodo || new Date().toISOString().substring(0, 7),
+      institucion: institucion || 'Institución no especificada',
+      cuit: cuit || null,
+      items,
+      total,
+      lineas
+    };
+  }
+
+  /**
+   * Extrae los items individuales del listado
+   * @private
+   * @param {string[]} lineas - Líneas del texto
+   * @returns {ItemListado[]} Array de items extraídos
+   */
+  extraerItemsListado(lineas) {
+    const items = [];
+    
+    for (let i = 0; i < lineas.length; i++) {
+      const linea = lineas[i];
+      
+      // Buscar líneas que contengan legajo y apellido/nombre
+      const legajoMatch = linea.match(/(\d{4,8})/); // Legajo de 4-8 dígitos
+      
+      if (legajoMatch) {
+        // Buscar apellido y nombre en la misma línea o líneas siguientes
+        const apellidoNombreMatch = linea.match(/([A-ZÁÉÍÓÚÑ\s]+)\s+([A-ZÁÉÍÓÚÑ\s]+)/i);
+        
+        if (apellidoNombreMatch) {
+          const legajo = legajoMatch[1];
+          const apellido = apellidoNombreMatch[1].trim();
+          const nombre = apellidoNombreMatch[2].trim();
+          
+          // Buscar montos en la línea o líneas siguientes
+          const montos = this.extraerMontos(linea);
+          
+          // Buscar documento en líneas cercanas
+          const documento = this.extraerDocumento(lineas, i);
+          
+          // Buscar concepto
+          const concepto = this.extraerConcepto(lineas, i);
+          
+          if (apellido && nombre && montos.neto > 0) {
+            items.push({
+              legajo,
               apellido,
+              nombre,
               documento,
-              cbu,
-              monto
+              haber: montos.haber,
+              descuento: montos.descuento,
+              neto: montos.neto,
+              concepto: concepto || 'Aporte SIDEPP'
             });
           }
         }
       }
     }
-
-    return personas;
+    
+    return items;
   }
 
-  extraerConceptos(lineas) {
-    // Implementar según el formato específico de conceptos en el PDF
-    // Este es un ejemplo básico
-    const conceptos = [];
-    let enSeccionConceptos = false;
-
-    for (const linea of lineas) {
-      if (linea.includes('Concepto') && linea.includes('Monto')) {
-        enSeccionConceptos = true;
-        continue;
-      }
-
-      if (enSeccionConceptos) {
-        // Detener al encontrar totales o fin de sección
-        if (linea.includes('Totales:') || linea.includes('---')) {
-          break;
-        }
-
-        // Ejemplo: "HABER BASICO 100,000.00"
-        const match = linea.match(/^([A-Z\s]+?)\s+([\d.,]+)/i);
-        if (match) {
-          const descripcion = match[1].trim();
-          const monto = parseFloat(match[2].replace('.', '').replace(',', '.'));
-          
-          // Determinar tipo de concepto
-          let tipo = 'Haber';
-          if (descripcion.includes('DESCUENTO') || descripcion.includes('RETENCION')) {
-            tipo = 'Descuento';
-          } else if (descripcion.includes('APORTE') || descripcion.includes('CONTRIBUCIÓN')) {
-            tipo = 'Aporte';
-          }
-
-          conceptos.push({
-            codigo: descripcion.substring(0, 10).trim().toUpperCase().replace(/\s+/g, '_'),
-            descripcion,
-            tipo,
-            monto
-          });
-        }
-      }
+  /**
+   * Extrae montos de una línea
+   * @private
+   * @param {string} linea - Línea de texto
+   * @returns {Object} Montos extraídos
+   */
+  extraerMontos(linea) {
+    // Buscar patrones de montos ($1,000.00, 1000,00, etc.)
+    const montos = linea.match(/(?:USD\s*)?\$?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))/g);
+    
+    if (montos && montos.length >= 3) {
+      const haber = parseFloat(montos[0].replace(/[$,]/g, ''));
+      const descuento = parseFloat(montos[1].replace(/[$,]/g, ''));
+      const neto = parseFloat(montos[2].replace(/[$,]/g, ''));
+      
+      return { haber, descuento, neto };
     }
+    
+    return { haber: 0, descuento: 0, neto: 0 };
+  }
 
-    return conceptos;
+  /**
+   * Extrae documento de líneas cercanas
+   * @private
+   * @param {string[]} lineas - Todas las líneas
+   * @param {number} index - Índice de la línea actual
+   * @returns {string|null} Documento extraído
+   */
+  extraerDocumento(lineas, index) {
+    // Buscar en líneas cercanas (índice actual ± 2)
+    for (let i = Math.max(0, index - 2); i <= Math.min(lineas.length - 1, index + 2); i++) {
+      const docMatch = lineas[i].match(/(\d{2}-\d{8}-\d{1})/); // CUIL
+      if (docMatch) return docMatch[1];
+      
+      const dniMatch = lineas[i].match(/(\d{7,8})/); // DNI
+      if (dniMatch) return dniMatch[1];
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extrae concepto de líneas cercanas
+   * @private
+   * @param {string[]} lineas - Todas las líneas
+   * @param {number} index - Índice de la línea actual
+   * @returns {string|null} Concepto extraído
+   */
+  extraerConcepto(lineas, index) {
+    // Buscar en líneas cercanas
+    for (let i = Math.max(0, index - 1); i <= Math.min(lineas.length - 1, index + 1); i++) {
+      const conceptoMatch = lineas[i].match(/(?:CONCEPTO|DESCRIPCION)[:\s]+([^\n]+?)(?=\s{2,}|$)/i);
+      if (conceptoMatch) return conceptoMatch[1].trim();
+    }
+    
+    return null;
   }
 }

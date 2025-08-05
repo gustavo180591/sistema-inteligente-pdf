@@ -13,62 +13,263 @@ model User {
   email         String       @unique
   name          String?
   password      String
+  role          UserRole     @default(USER)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   documentos    DocumentoPDF[]
+  instituciones Institucion[] // Para administradores que gestionan múltiples instituciones
+  reportes      Reporte[]
+}
+
+model Institucion {
+  id            String       @id @default(cuid())
+  nombre        String
+  cuit          String       @unique
+  direccion     String?
+  telefono      String?
+  email         String?
+  responsable   String?
+  tipo          TipoInstitucion @default(ESCUELA)
+  estado        EstadoInstitucion @default(ACTIVA)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  // Relaciones
+  socios        Socio[]
+  aportes       Aporte[]
+  transferencias Transferencia[]
+  userId        String?      // Usuario administrador
+  user          User?        @relation(fields: [userId], references: [id])
+  
+  @@index([cuit])
+  @@index([nombre])
+}
+
+model Socio {
+  id            String       @id @default(cuid())
+  legajo        String       @unique
+  nombre        String
+  apellido      String
+  documento     String?      @unique
+  cbu           String?      @unique
+  email         String?
+  telefono      String?
+  fechaIngreso  DateTime     @default(now())
+  estado        EstadoSocio  @default(ACTIVO)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  // Relaciones
+  institucionId String
+  institucion   Institucion  @relation(fields: [institucionId], references: [id])
+  aportes       Aporte[]
+  historial     HistorialSocio[]
+  
+  @@index([legajo])
+  @@index([documento])
+  @@index([apellido, nombre])
+  @@index([institucionId])
+}
+
+model Aporte {
+  id            String       @id @default(cuid())
+  periodo       String       // Formato: YYYY-MM
+  monto         Decimal
+  concepto      String?
+  estado        EstadoAporte @default(PENDIENTE)
+  fechaPago     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  // Relaciones
+  socioId       String
+  socio         Socio        @relation(fields: [socioId], references: [id])
+  institucionId String
+  institucion   Institucion  @relation(fields: [institucionId], references: [id])
+  transferenciaId String?
+  transferencia Transferencia? @relation(fields: [transferenciaId], references: [id])
+  
+  @@unique([socioId, periodo])
+  @@index([periodo])
+  @@index([estado])
+  @@index([institucionId])
+}
+
+model HistorialSocio {
+  id            String       @id @default(cuid())
+  tipo          TipoHistorial
+  descripcion   String
+  fecha         DateTime     @default(now())
+  datos         Json?
+  
+  // Relaciones
+  socioId       String
+  socio         Socio        @relation(fields: [socioId], references: [id])
+  
+  @@index([socioId])
+  @@index([fecha])
 }
 
 model DocumentoPDF {
   id            String       @id @default(cuid())
   nombreArchivo String
-  tipo          String       // TRANSFERENCIA, SIDEPP, etc.
-  estado        String       // PROCESADO, PENDIENTE, ERROR
+  tipo          TipoDocumento
+  estado        EstadoDocumento @default(PENDIENTE)
   fechaCarga    DateTime     @default(now())
+  fechaProcesado DateTime?
   url           String?
   metadata      Json?
+  error         String?
   userId        String
   user          User         @relation(fields: [userId], references: [id])
+  
+  // Relaciones
   transferencia Transferencia?
   sidepp        SIDEPP?
+  
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
   @@index([userId])
+  @@index([tipo])
+  @@index([estado])
 }
 
 model Transferencia {
   id             String      @id @default(cuid())
-  documento      DocumentoPDF @relation(fields: [documentoId], references: [id])
-  documentoId    String      @unique
   fechaOperacion DateTime
   montoTotal     Decimal
-  cbuOrigen      String
-  cbuDestino     String
+  cbuOrigen      String?
+  cbuDestino     String?
   referencia     String?
+  estado         EstadoTransferencia @default(PENDIENTE)
   detalles       Json?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  
+  // Relaciones
+  documentoId    String      @unique
+  documento      DocumentoPDF @relation(fields: [documentoId], references: [id])
+  institucionId  String?
+  institucion    Institucion? @relation(fields: [institucionId], references: [id])
+  aportes        Aporte[]
+  
+  @@index([fechaOperacion])
+  @@index([estado])
+  @@index([institucionId])
 }
 
 model SIDEPP {
   id             String      @id @default(cuid())
-  documento      DocumentoPDF @relation(fields: [documentoId], references: [id])
-  documentoId    String      @unique
   periodo        String
   total          Decimal
   detalles       Json?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  
+  // Relaciones
+  documentoId    String      @unique
+  documento      DocumentoPDF @relation(fields: [documentoId], references: [id])
+  
+  @@index([periodo])
 }
 
-model Persona {
-  id        String   @id @default(cuid())
-  nombre    String
-  apellido  String
-  documento String?  @unique
-  legajos   Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Reporte {
+  id            String       @id @default(cuid())
+  nombre        String
+  tipo          TipoReporte
+  parametros    Json?
+  url           String?
+  estado        EstadoReporte @default(PENDIENTE)
+  fechaGeneracion DateTime   @default(now())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  @@index([tipo])
+  @@index([estado])
+  @@index([userId])
+}
 
-  @@index([apellido, nombre])
+// Enums
+enum UserRole {
+  ADMIN
+  USER
+  VIEWER
+}
+
+enum TipoInstitucion {
+  ESCUELA
+  COOPERATIVA
+  FUNDACION
+  OTRO
+}
+
+enum EstadoInstitucion {
+  ACTIVA
+  INACTIVA
+  SUSPENDIDA
+}
+
+enum EstadoSocio {
+  ACTIVO
+  INACTIVO
+  SUSPENDIDO
+  RETIRADO
+}
+
+enum EstadoAporte {
+  PENDIENTE
+  PAGADO
+  VENCIDO
+  CANCELADO
+}
+
+enum TipoHistorial {
+  INGRESO
+  RETIRO
+  CAMBIO_INSTITUCION
+  CAMBIO_LEGAJO
+  SUSPENSION
+  REACTIVACION
+}
+
+enum TipoDocumento {
+  TRANSFERENCIA
+  SIDEPP
+  LISTADO
+  COMPROBANTE
+  OTRO
+}
+
+enum EstadoDocumento {
+  PENDIENTE
+  PROCESADO
+  ERROR
+  VALIDADO
+}
+
+enum EstadoTransferencia {
+  PENDIENTE
+  VALIDADA
+  RECHAZADA
+  CONCILIADA
+}
+
+enum TipoReporte {
+  INSTITUCION
+  SOCIO
+  APORTE
+  TRANSFERENCIA
+  CONCILIACION
+  GENERAL
+}
+
+enum EstadoReporte {
+  PENDIENTE
+  GENERANDO
+  COMPLETADO
+  ERROR
 }
